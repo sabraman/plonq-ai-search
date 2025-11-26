@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+dist/
+build/
+convex/_generated/
+*.config.js
+*.config.ts
+*.config.cjs
+*.config.mjs
+.env*
+*.d.ts
+next-env.d.ts
+src/styles/globals.css
