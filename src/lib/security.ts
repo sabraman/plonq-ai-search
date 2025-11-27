@@ -94,9 +94,9 @@ export async function getAuth() {
     isAuthorized,
     userData: user
       ? {
-        firstName: user.first_name,
-        username: user.username,
-      }
+          firstName: user.first_name,
+          username: user.username,
+        }
       : null,
   } as const;
 }

@@ -24,15 +24,22 @@
       "quoteStyle": "double"
     }
   },
+  "css": {
+    "parser": {
+      "cssModules": true,
+      "tailwindDirectives": true
+    }
+  },
   "overrides": [
     {
-      "includes": ["src/styles/globals.css"],
+      "includes": [
+        "src/styles/globals.css"
+      ],
       "linter": {
-        "enabled": false
-      },
-      "css": {
-        "parser": {
-          "cssModules": true
+        "rules": {
+          "suspicious": {
+            "noUnknownAtRules": "off"
+          }
         }
       }
     }

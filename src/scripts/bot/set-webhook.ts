@@ -1,5 +1,5 @@
-import { bot } from "~/lib/bot/bot";
 import { env } from "~/env";
+import { bot } from "~/lib/bot/bot";
 
 /**
  * Script to set up the webhook URL for your bot

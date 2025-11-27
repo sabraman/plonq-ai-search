@@ -12,3 +12,4 @@ convex/_generated/
 *.d.ts
 next-env.d.ts
 src/styles/globals.css
+src/styles/globals.css
