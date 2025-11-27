@@ -1,6 +1,6 @@
 
 import { action, internalQuery, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
 import OpenAI from "openai";
 import { Id } from "./_generated/dataModel";
@@ -79,11 +79,19 @@ export const search = action({
         const user = parse(args.initData).user;
         if (!user) throw new Error("User not found in initData");
 
-        await ctx.runMutation(internal.rateLimit.check, {
+        const result = await ctx.runMutation(internal.rateLimit.check, {
             key: user.id.toString(),
             limit: 5, // 5 requests
             windowMs: 60 * 1000, // per minute
         });
+
+        if (!result.success) {
+            throw new ConvexError({
+                code: "RATE_LIMIT_EXCEEDED",
+                message: "You are sending too many requests. Please try again later.",
+                retryAfter: result.retryAfter
+            });
+        }
 
         // 1. Generate embedding for preferences
         console.time("Embedding Generation");

@@ -11,8 +11,14 @@ async function testSearch() {
     const query = "самое сладкое";
     console.log(`Searching for: "${query}"...`);
 
+    // Mock initData for testing
+    const { sign } = await import("@telegram-apps/init-data-node");
+    const token = process.env.TG_API_TOKEN!;
+    const initData = sign({ user: { id: 12345, first_name: "Test" } }, token, new Date());
+
     const results = await client.action(api.products.search, {
         preferences: query,
+        initData: initData
     });
 
     console.log(`Found ${results.length} products.`);

@@ -21,14 +21,16 @@ export const check = internalMutation({
                     count: 1,
                     resetTime: now + args.windowMs,
                 });
+                return { success: true };
             } else {
                 // Within window
                 if (record.count >= args.limit) {
-                    throw new Error("RateLimitExceeded");
+                    return { success: false, retryAfter: record.resetTime };
                 }
                 await ctx.db.patch(record._id, {
                     count: record.count + 1,
                 });
+                return { success: true };
             }
         } else {
             // New record
@@ -37,6 +39,7 @@ export const check = internalMutation({
                 count: 1,
                 resetTime: now + args.windowMs,
             });
+            return { success: true };
         }
     },
 });

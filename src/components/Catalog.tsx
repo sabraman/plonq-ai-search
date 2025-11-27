@@ -59,7 +59,9 @@ export function Catalog({ initialProducts }: CatalogProps) {
 
       try {
         // 1. Fetch products (Fast)
-        const { retrieveRawInitData } = await import("@telegram-apps/sdk-react");
+        const { retrieveRawInitData } = await import(
+          "@telegram-apps/sdk-react"
+        );
         const initData = retrieveRawInitData();
 
         if (!initData) {
@@ -69,7 +71,7 @@ export function Catalog({ initialProducts }: CatalogProps) {
 
         const products = await search({
           preferences: searchQuery,
-          initData: initData
+          initData: initData,
         });
 
         if (products) {

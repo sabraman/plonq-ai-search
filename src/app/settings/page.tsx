@@ -1,5 +1,4 @@
 import { getAuth } from "~/lib/security";
-import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
   const auth = await getAuth();
@@ -8,7 +7,9 @@ export default async function SettingsPage() {
     return (
       <div className="flex min-h-screen items-center justify-center p-4 text-center">
         <h1 className="text-xl font-bold text-red-500">Access Denied</h1>
-        <p className="mt-2 text-gray-600">Please open this app from Telegram.</p>
+        <p className="mt-2 text-gray-600">
+          Please open this app from Telegram.
+        </p>
       </div>
     );
   }
@@ -20,7 +21,9 @@ export default async function SettingsPage() {
     return (
       <div className="flex min-h-screen items-center justify-center p-4 text-center">
         <h1 className="text-xl font-bold text-red-500">Access Restricted</h1>
-        <p className="mt-2 text-gray-600">You do not have permission to view this page.</p>
+        <p className="mt-2 text-gray-600">
+          You do not have permission to view this page.
+        </p>
         <p className="mt-4 text-xs text-gray-400">Your ID: {userId}</p>
       </div>
     );
@@ -29,7 +32,9 @@ export default async function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-sm">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">Admin Settings</h1>
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">
+          Admin Settings
+        </h1>
 
         <div className="space-y-6">
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
@@ -45,8 +50,15 @@ export default async function SettingsPage() {
 
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
             <h2 className="mb-2 font-semibold text-gray-900">Admin Info</h2>
-            <p className="text-sm text-gray-600">Logged in as: <span className="font-medium text-gray-900">{auth.userData.firstName}</span></p>
-            <p className="text-sm text-gray-600">ID: <span className="font-mono text-xs">{userId}</span></p>
+            <p className="text-sm text-gray-600">
+              Logged in as:{" "}
+              <span className="font-medium text-gray-900">
+                {auth.userData.firstName}
+              </span>
+            </p>
+            <p className="text-sm text-gray-600">
+              ID: <span className="font-mono text-xs">{userId}</span>
+            </p>
           </div>
         </div>
       </div>

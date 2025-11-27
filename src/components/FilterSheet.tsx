@@ -69,7 +69,7 @@ export function FilterSheet({
   const dynamicFilteredCount =
     products.length > 0
       ? filterProducts(products, { ...localFilters } as FilterState, favorites)
-        .length
+          .length
       : filteredCount;
 
   // Sync local state with store when drawer opens
