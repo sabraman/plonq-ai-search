@@ -5,11 +5,6 @@ import OpenAI from "openai";
 
 const http = httpRouter();
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    baseURL: process.env.OPENAI_BASE_URL,
-});
-
 http.route({
     path: "/stream-recommendation",
     method: "OPTIONS",
@@ -50,6 +45,11 @@ http.route({
       
       Return ONLY the recommendation text. Do not return JSON.
     `;
+
+        const openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+            baseURL: process.env.OPENAI_BASE_URL,
+        });
 
         const stream = await openai.chat.completions.create({
             model: "openai/gpt-oss-120b",

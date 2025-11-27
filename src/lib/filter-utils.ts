@@ -25,7 +25,6 @@ export function filterProducts(
   products: Product[],
   filters: FilterState,
   favoriteIds?: string[], // Pass favorite IDs if showFavorites is true
-  disableSort?: boolean,
 ): Product[] {
   let result = products;
 

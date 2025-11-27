@@ -7,11 +7,7 @@ import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
 import { cn } from "~/lib/utils";
 
-function InputGroup({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"fieldset">) {
+function InputGroup({ className, ...props }: React.ComponentProps<"fieldset">) {
   return (
     <fieldset
       data-slot="input-group"

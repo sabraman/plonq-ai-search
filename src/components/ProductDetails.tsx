@@ -13,6 +13,7 @@ import {
 import type { Product } from "~/lib/filter-utils";
 import { useFavoritesStore } from "~/store/favorites-store";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { ProductCard } from "./ProductCard";
 
 interface ProductDetailsProps {
@@ -33,8 +34,7 @@ export function ProductDetails({
   useEffect(() => {
     if (isOpen && product && product._id) {
       setIsLoading(true);
-      // biome-ignore lint/suspicious/noExplicitAny: Safe ID cast
-      getSimilar({ productId: product._id as any })
+      getSimilar({ productId: product._id as Id<"products"> })
         .then((res) => setSimilarProducts(res as Product[]))
         .catch(console.error)
         .finally(() => setIsLoading(false));
@@ -51,9 +51,9 @@ export function ProductDetails({
   const avgRating =
     product.reviews && product.reviews.length > 0
       ? (
-        product.reviews.reduce((acc, r) => acc + r.rating, 0) /
-        product.reviews.length
-      ).toFixed(1)
+          product.reviews.reduce((acc, r) => acc + r.rating, 0) /
+          product.reviews.length
+        ).toFixed(1)
       : "0.0";
 
   // Helper to render taste dots (reused from ProductCard, could be shared)
@@ -64,8 +64,9 @@ export function ProductDetails({
           <div
             // biome-ignore lint/suspicious/noArrayIndexKey: Static array for visual dots
             key={i}
-            className={`h-2 w-2 rounded-full ${i < count ? colorClass : "bg-gray-200"
-              }`}
+            className={`h-2 w-2 rounded-full ${
+              i < count ? colorClass : "bg-gray-200"
+            }`}
           />
         ))}
       </div>
@@ -124,13 +125,13 @@ export function ProductDetails({
             <div className="mb-8 grid grid-cols-3 gap-4 rounded-2xl bg-gray-50 p-4">
               <div className="flex flex-col items-center gap-2">
                 <span className="text-xs font-medium text-gray-500">Холод</span>
-                {renderDots(product.coldness ?? 0, "bg-cyan-400")}
+                {renderDots(product.coldness || 1, "bg-cyan-400")}
               </div>
               <div className="flex flex-col items-center gap-2">
                 <span className="text-xs font-medium text-gray-500">
                   Сладость
                 </span>
-                {renderDots(product.sweetness ?? 0, "bg-rose-400")}
+                {renderDots(product.sweetness || 1, "bg-rose-400")}
               </div>
               <div className="flex flex-col items-center gap-2">
                 <span className="text-xs font-medium text-gray-500">
@@ -234,10 +235,11 @@ export function ProductDetails({
           <div className="border-t bg-white px-6 py-4">
             <Button
               onClick={() => product._id && toggleFavorite(product._id)}
-              className={`w-full h-14 rounded-full text-lg font-medium transition-colors ${product._id && isFavorite(product._id)
-                ? "bg-red-50 text-red-500 hover:bg-red-100"
-                : "bg-black text-white hover:bg-gray-800"
-                }`}
+              className={`w-full h-14 rounded-full text-lg font-medium transition-colors ${
+                product._id && isFavorite(product._id)
+                  ? "bg-red-50 text-red-500 hover:bg-red-100"
+                  : "bg-black text-white hover:bg-gray-800"
+              }`}
             >
               {product._id && isFavorite(product._id)
                 ? "Убрать из избранного"

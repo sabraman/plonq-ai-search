@@ -17,6 +17,8 @@ export default defineSchema({
     url: v.string(),
     coldness: v.optional(v.number()), // 0-2
     sweetness: v.optional(v.number()), // 0-2
+    coldnessLabel: v.optional(v.string()),
+    sweetnessLabel: v.optional(v.string()),
     sourness: v.optional(v.boolean()),
     features: v.optional(v.array(v.object({ name: v.string(), value: v.string() }))),
     strength: v.optional(v.string()),

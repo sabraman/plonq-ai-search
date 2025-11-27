@@ -3,7 +3,6 @@
 import { useAction, useQuery } from "convex/react";
 import { Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
 import { filterProducts, type Product } from "~/lib/filter-utils";
 import { useFavoritesStore } from "~/store/favorites-store";
 import { useFilterStore } from "~/store/filter-store";
@@ -45,64 +44,78 @@ export function Catalog({ initialProducts }: CatalogProps) {
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const handleSearch = useCallback(async (force = false) => {
-    if (!searchQuery?.trim()) return;
-    // Don't re-fetch if query is same as last successful AI search, unless forced
-    if (!force && searchQuery === lastAiQuery) return;
+  const handleSearch = useCallback(
+    async (force = false) => {
+      if (!searchQuery?.trim()) return;
+      // Don't re-fetch if query is same as last successful AI search, unless forced
+      if (!force && searchQuery === lastAiQuery) return;
 
-    // Create new controller
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+      // Create new controller
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
-    setLoading(true);
-    setRecommendationText(""); // Clear previous text
+      setLoading(true);
+      setRecommendationText(""); // Clear previous text
 
-    try {
-      // 1. Fetch products (Fast)
-      const products = await search({ preferences: searchQuery });
+      try {
+        // 1. Fetch products (Fast)
+        const { retrieveRawInitData } = await import("@telegram-apps/sdk-react");
+        const initData = retrieveRawInitData();
 
-      if (products) {
-        setProducts(products as unknown as Product[]);
-        setLastAiQuery(searchQuery);
-      }
+        if (!initData) {
+          console.error("No initData available");
+          return;
+        }
 
-      // 2. Stream recommendation (Optimistic)
-      const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
-      const siteUrl = convexUrl.replace(".cloud", ".site");
-
-      const response = await fetch(`${siteUrl}/stream-recommendation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        const products = await search({
           preferences: searchQuery,
-          products: products.slice(0, 5), // Send top 5 for context
-        }),
-        signal: controller.signal,
-      });
+          initData: initData
+        });
 
-      if (!response.body) return;
+        if (products) {
+          setProducts(products as unknown as Product[]);
+          setLastAiQuery(searchQuery);
+        }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+        // 2. Stream recommendation (Optimistic)
+        const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
+        const siteUrl = convexUrl.replace(".cloud", ".site");
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        // Paranoid check: stop if we've been aborted (even if fetch didn't throw yet)
-        if (abortControllerRef.current !== controller) break;
+        const response = await fetch(`${siteUrl}/stream-recommendation`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            preferences: searchQuery,
+            products: products.slice(0, 5), // Send top 5 for context
+          }),
+          signal: controller.signal,
+        });
 
-        const chunk = decoder.decode(value);
-        setRecommendationText((prev) => (prev || "") + chunk);
+        if (!response.body) return;
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          // Paranoid check: stop if we've been aborted (even if fetch didn't throw yet)
+          if (abortControllerRef.current !== controller) break;
+
+          const chunk = decoder.decode(value);
+          setRecommendationText((prev) => (prev || "") + chunk);
+        }
+      } catch {
+        // ...
+      } finally {
+        if (abortControllerRef.current === controller) {
+          setLoading(false);
+          abortControllerRef.current = null;
+        }
       }
-    } catch (error: unknown) {
-      // ...
-    } finally {
-      if (abortControllerRef.current === controller) {
-        setLoading(false);
-        abortControllerRef.current = null;
-      }
-    }
-  }, [searchQuery, lastAiQuery, search]);
+    },
+    [searchQuery, lastAiQuery, search],
+  );
 
   // Debounce AI Search
   useEffect(() => {
@@ -141,9 +154,9 @@ export function Catalog({ initialProducts }: CatalogProps) {
 
     // Use centralized filter logic
     // Disable sorting if we are showing AI search results (relevance matters more)
-    const isAiSearchActive = searchQuery.trim() && searchQuery === lastAiQuery;
+    // const isAiSearchActive = searchQuery.trim() && searchQuery === lastAiQuery;
 
-    let finalResult = filterProducts(result, filters, favorites, !!isAiSearchActive);
+    let finalResult = filterProducts(result, filters, favorites);
 
     // AI Re-ranking (Frontend Sync)
     // If the AI explicitly recommends a product (bolded text), move it to the top
@@ -168,7 +181,14 @@ export function Catalog({ initialProducts }: CatalogProps) {
     }
 
     return finalResult;
-  }, [products, searchQuery, filters, lastAiQuery, favorites, recommendationText]);
+  }, [
+    products,
+    searchQuery,
+    filters,
+    lastAiQuery,
+    favorites,
+    recommendationText,
+  ]);
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 

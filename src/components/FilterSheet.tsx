@@ -373,7 +373,7 @@ export function FilterSheet({
                     onClick={() =>
                       setLocalFilters((prev) => ({
                         ...prev,
-                        sortBy: undefined,
+                        sortBy: "",
                       }))
                     }
                     className={cn(

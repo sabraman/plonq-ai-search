@@ -44,7 +44,7 @@ async function validateRateLimit() {
             console.log(`Request ${i}...`);
             await client.action(api.products.search, {
                 preferences: "mint",
-                initData: initData
+                initData: initData,
             });
             console.log(`Request ${i}: Success`);
         } catch (e: any) {

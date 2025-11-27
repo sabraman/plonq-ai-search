@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export function useHaptics() {
   const impact = (style: "light" | "medium" | "heavy" | "rigid" | "soft") => {
     try {
@@ -9,7 +10,7 @@ export function useHaptics() {
         // biome-ignore lint/suspicious/noExplicitAny: Telegram global
         (window as any).Telegram.WebApp.HapticFeedback.impactOccurred(style);
       }
-    } catch (_e) {
+    } catch {
       // Ignore
     }
   };
@@ -26,7 +27,7 @@ export function useHaptics() {
           type,
         );
       }
-    } catch (_e) {
+    } catch {
       // Ignore
     }
   };
@@ -41,7 +42,7 @@ export function useHaptics() {
         // biome-ignore lint/suspicious/noExplicitAny: Telegram global
         (window as any).Telegram.WebApp.HapticFeedback.selectionChanged();
       }
-    } catch (_e) {
+    } catch {
       // Ignore
     }
   };

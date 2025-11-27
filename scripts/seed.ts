@@ -17,7 +17,13 @@ async function seed() {
 
     // Clear existing products
     console.log("Clearing existing products...");
-    await client.mutation(api.ingest.clearAllProducts, {});
+    // Clear existing products
+    console.log("Clearing existing products...");
+    while (true) {
+        const deleted = await client.mutation(api.ingest.clearAllProducts, { limit: 100 });
+        if (deleted === 0) break;
+        console.log(`Deleted ${deleted} products...`);
+    }
 
     // Chunking to avoid payload limits
     const CHUNK_SIZE = 10;
@@ -30,4 +36,8 @@ async function seed() {
     console.log("Seeding complete!");
 }
 
-seed().catch(console.error);
+seed().catch((err) => {
+    console.error("Seed failed:", err);
+    if (err.data) console.error("Error data:", JSON.stringify(err.data, null, 2));
+    process.exit(1);
+});

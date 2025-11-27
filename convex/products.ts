@@ -23,13 +23,10 @@ interface Product {
     reviews?: { author: string; date: string; rating: number; text: string }[];
     coldness?: number;
     sweetness?: number;
+    coldnessLabel?: string;
+    sweetnessLabel?: string;
     sourness?: boolean;
 }
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    baseURL: process.env.OPENAI_BASE_URL,
-});
 
 export const list = query({
     args: {},
@@ -60,6 +57,7 @@ export const searchProducts = internalQuery({
 export const search = action({
     args: {
         preferences: v.string(),
+        initData: v.string(),
         filters: v.optional(v.object({
             strength: v.optional(v.array(v.string())),
             deviceType: v.optional(v.array(v.string())),
@@ -69,8 +67,30 @@ export const search = action({
     handler: async (ctx, args) => {
         console.time("Total Execution");
 
+        // 0. Rate Limiting
+        const { parse, isValid } = await import("@telegram-apps/init-data-node/web");
+        const token = process.env.TG_API_TOKEN;
+        if (!token) throw new Error("TG_API_TOKEN not configured");
+
+        if (!isValid(args.initData, token)) {
+            throw new Error("Invalid initData");
+        }
+
+        const user = parse(args.initData).user;
+        if (!user) throw new Error("User not found in initData");
+
+        await ctx.runMutation(internal.rateLimit.check, {
+            key: user.id.toString(),
+            limit: 5, // 5 requests
+            windowMs: 60 * 1000, // per minute
+        });
+
         // 1. Generate embedding for preferences
         console.time("Embedding Generation");
+        const openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+            baseURL: process.env.OPENAI_BASE_URL,
+        });
         const embeddingResponse = await openai.embeddings.create({
             model: "google/gemini-embedding-001",
             input: args.preferences,
@@ -161,12 +181,20 @@ export const search = action({
         // 2.2 Heuristic Re-ranking
         // Boost products that match attribute keywords in the query
         const queryLower = args.preferences.toLowerCase();
-        const isStrong = queryLower.includes("крепк") || queryLower.includes("strong");
-        const isCold = queryLower.includes("холод") || queryLower.includes("лед") || queryLower.includes("ice");
-        const isSweet = queryLower.includes("сладк") || queryLower.includes("sweet");
-        const isSour = queryLower.includes("кисл") || queryLower.includes("sour");
 
-        if (isStrong || isCold || isSweet || isSour) {
+        // Check for negation first
+        const isNotSweet = queryLower.includes("не сладк") || queryLower.includes("not sweet") || queryLower.includes("no sweet");
+        const isNotCold = queryLower.includes("не холод") || queryLower.includes("not cold") || queryLower.includes("no ice");
+        const isNotSour = queryLower.includes("не кисл") || queryLower.includes("not sour") || queryLower.includes("no sour");
+
+        // Positive checks (only if not negated)
+        const isStrong = queryLower.includes("крепк") || queryLower.includes("strong");
+        // "Fresh" usually implies cold/ice
+        const isCold = !isNotCold && (queryLower.includes("холод") || queryLower.includes("лед") || queryLower.includes("ice") || queryLower.includes("свеж") || queryLower.includes("fresh"));
+        const isSweet = !isNotSweet && (queryLower.includes("сладк") || queryLower.includes("sweet"));
+        const isSour = !isNotSour && (queryLower.includes("кисл") || queryLower.includes("sour"));
+
+        if (isStrong || isCold || isSweet || isSour || isNotSweet || isNotCold || isNotSour) {
             products.sort((a, b) => {
                 let scoreA = 0;
                 let scoreB = 0;
@@ -175,17 +203,38 @@ export const search = action({
                     if (a.strength === "High") scoreA += 2;
                     if (b.strength === "High") scoreB += 2;
                 }
+
+                // Coldness logic
                 if (isCold) {
-                    if ((a.coldness ?? 0) >= 2) scoreA += 1;
-                    if ((b.coldness ?? 0) >= 2) scoreB += 1;
+                    if ((a.coldness ?? 0) >= 3) scoreA += 3;
+                    else if ((a.coldness ?? 0) >= 2) scoreA += 1;
+
+                    if ((b.coldness ?? 0) >= 3) scoreB += 3;
+                    else if ((b.coldness ?? 0) >= 2) scoreB += 1;
+                } else if (isNotCold) {
+                    if ((a.coldness ?? 0) <= 1) scoreA += 2;
+                    if ((b.coldness ?? 0) <= 1) scoreB += 2;
                 }
+
+                // Sweetness logic
                 if (isSweet) {
-                    if ((a.sweetness ?? 0) >= 2) scoreA += 1;
-                    if ((b.sweetness ?? 0) >= 2) scoreB += 1;
+                    if ((a.sweetness ?? 0) >= 3) scoreA += 3;
+                    else if ((a.sweetness ?? 0) >= 2) scoreA += 1;
+
+                    if ((b.sweetness ?? 0) >= 3) scoreB += 3;
+                    else if ((b.sweetness ?? 0) >= 2) scoreB += 1;
+                } else if (isNotSweet) {
+                    if ((a.sweetness ?? 0) <= 1) scoreA += 2; // Boost low sweetness
+                    if ((b.sweetness ?? 0) <= 1) scoreB += 2;
                 }
+
+                // Sourness logic
                 if (isSour) {
-                    if (a.sourness) scoreA += 1;
-                    if (b.sourness) scoreB += 1;
+                    if (a.sourness) scoreA += 2;
+                    if (b.sourness) scoreB += 2;
+                } else if (isNotSour) {
+                    if (!a.sourness) scoreA += 2;
+                    if (!b.sourness) scoreB += 2;
                 }
 
                 // Sort by score descending
@@ -199,9 +248,12 @@ export const search = action({
         });
 
         if (sanitizedProducts.length > 0) {
-            console.log("Sanitized Product Keys:", Object.keys(sanitizedProducts[0]));
-            if (sanitizedProducts[0].images) {
-                console.log("Image URL length:", sanitizedProducts[0].images[0]?.length);
+            const firstProduct = sanitizedProducts[0];
+            if (firstProduct) {
+                console.log("Sanitized Product Keys:", Object.keys(firstProduct));
+                if (firstProduct.images) {
+                    console.log("Image URL length:", firstProduct.images[0]?.length);
+                }
             }
         }
 

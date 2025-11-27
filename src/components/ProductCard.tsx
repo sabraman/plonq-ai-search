@@ -3,7 +3,6 @@ import Image from "next/image";
 import type { Product } from "~/lib/filter-utils";
 import { useHaptics } from "~/lib/telegram";
 import { useFavoritesStore } from "~/store/favorites-store";
-import { Button } from "./ui/button";
 
 interface ProductCardProps {
   product: Product;
@@ -22,8 +21,9 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
           <div
             // biome-ignore lint/suspicious/noArrayIndexKey: Static array for visual dots
             key={i}
-            className={`h-2 w-2 rounded-full ${i < count ? colorClass : "bg-gray-200"
-              }`}
+            className={`h-2 w-2 rounded-full ${
+              i < count ? colorClass : "bg-gray-200"
+            }`}
           />
         ))}
       </div>
@@ -43,10 +43,11 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
       className="flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors h-8 w-8"
     >
       <Heart
-        className={`transition-colors h-5 w-5 ${product._id && isFavorite(product._id)
-          ? "fill-red-500 text-red-500"
-          : "text-gray-400"
-          }`}
+        className={`transition-colors h-5 w-5 ${
+          product._id && isFavorite(product._id)
+            ? "fill-red-500 text-red-500"
+            : "text-gray-400"
+        }`}
       />
     </button>
   );
@@ -56,9 +57,9 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
       <span>
         {product.reviews && product.reviews.length > 0
           ? (
-            product.reviews.reduce((acc, r) => acc + r.rating, 0) /
-            product.reviews.length
-          ).toFixed(1)
+              product.reviews.reduce((acc, r) => acc + r.rating, 0) /
+              product.reviews.length
+            ).toFixed(1)
           : "0.0"}
       </span>
       {product.reviews && product.reviews.length > 0 && (
@@ -122,8 +123,8 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
 
         {/* Taste Indicators */}
         <div className="mb-2 sm:mb-4 flex gap-1.5 sm:gap-3">
-          {renderDots(product.coldness ?? 0, "bg-cyan-400")}
-          {renderDots(product.sweetness ?? 0, "bg-rose-400")}
+          {renderDots(product.coldness || 1, "bg-cyan-400")}
+          {renderDots(product.sweetness || 1, "bg-rose-400")}
           {/* Sourness */}
           {product.sourness && (
             <div className="h-2 w-8 rounded-full bg-[#ccff00]" />

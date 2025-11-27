@@ -53,6 +53,8 @@ interface Product {
     reviews?: Review[];
     strength?: string;
     deviceType?: string;
+    coldnessLabel?: string;
+    sweetnessLabel?: string;
     categories?: string[];
 }
 
@@ -125,140 +127,171 @@ async function scrape() {
 
     console.log(`Total unique products to scrape: ${allProductUrls.size}`);
     const allProducts: Product[] = [];
-    let processedCount = 0;
+    // ... (imports)
 
-    // Step 2: Visit each product page
-    for (const url of allProductUrls) {
-        processedCount++;
-        console.log(`[${processedCount}/${allProductUrls.size}] Scraping product: ${url}`);
+    // Helper for concurrency
+    const chunk = <T>(arr: T[], size: number): T[][] =>
+        Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
+            arr.slice(i * size, i * size + size)
+        );
 
-        try {
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // ... (inside scrape function)
 
-            // Wait for a bit to ensure dynamic content loads
-            await new Promise(r => setTimeout(r, 1000));
+    // Step 2: Visit each product page with concurrency
+    const CONCURRENCY = 2;
+    const chunks = chunk(Array.from(allProductUrls), CONCURRENCY);
 
-            const productData = await page.evaluate((productUrl) => {
-                const getText = (selector: string) => {
-                    const el = document.querySelector(selector);
-                    return el ? (el as HTMLElement).innerText.trim() : '';
-                };
+    for (const [i, batch] of chunks.entries()) {
+        console.log(`Processing batch ${i + 1}/${chunks.length} (${batch.length} items)...`);
 
-                const getSrc = (selector: string) => {
-                    const el = document.querySelector(selector);
-                    return el ? (el as HTMLImageElement).src : '';
-                };
+        await Promise.all(batch.map(async (url) => {
+            const page = await browser.newPage();
+            // Block images/fonts for speed if possible, but we need images for src. 
+            // Actually, we need to load images to get the src? No, usually in DOM.
+            // Let's just block fonts/css to speed up.
+            await page.setRequestInterception(true);
+            page.on('request', (req) => {
+                if (['font', 'stylesheet'].includes(req.resourceType())) {
+                    req.abort();
+                } else {
+                    req.continue();
+                }
+            });
 
-                // Basic Info
-                const flavor = getText('h1.meta_small-heading') || getText('.catalog_decription-text h1');
-                const modelElements = document.querySelectorAll('.same-flavours_rating-wrap .meta_small-paragraph');
-                let modelName = '';
-                if (modelElements.length >= 2) {
-                    modelName = `${(modelElements[0] as HTMLElement).innerText} ${(modelElements[1] as HTMLElement).innerText}`;
+            try {
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+                const productData = await page.evaluate((productUrl) => {
+                    const getText = (selector: string) => {
+                        const el = document.querySelector(selector);
+                        return el ? (el as HTMLElement).innerText.trim() : '';
+                    };
+
+                    const getSrc = (selector: string) => {
+                        const el = document.querySelector(selector);
+                        return el ? (el as HTMLImageElement).src : '';
+                    };
+
+                    // Basic Info
+                    const flavor = getText('h1.meta_small-heading') || getText('.catalog_decription-text h1');
+                    const modelElements = document.querySelectorAll('.same-flavours_rating-wrap .meta_small-paragraph');
+                    let modelName = '';
+                    if (modelElements.length >= 2) {
+                        modelName = `${(modelElements[0] as HTMLElement).innerText} ${(modelElements[1] as HTMLElement).innerText}`;
+                    }
+
+                    const name = modelName ? `${modelName} ${flavor}` : flavor || 'Unknown Product';
+                    const description = getText('.catalog_decription-text p.meta_small-paragraph') || getText('.catalog_decription-text');
+
+                    // Images
+                    const mainImage = getSrc('.catalog_main-img-wrapper .catalog_prod-img');
+                    const additionalImages = Array.from(document.querySelectorAll('.catalog_grid-small-img .catalog_prod-img'))
+                        .map(img => (img as HTMLImageElement).src)
+                        .filter(src => src !== mainImage);
+
+                    const images = [mainImage, ...additionalImages].filter(Boolean);
+
+                    // Attributes (Coldness, Sweetness, Sourness)
+                    let coldness = 0;
+                    let sweetness = 0;
+                    let sourness = false;
+
+                    const paramWrappers = document.querySelectorAll('.catalog_param-wrapper .same-flavours_rating-wrap');
+                    paramWrappers.forEach(wrapper => {
+                        const label = (wrapper.querySelector('.n-subtext') as HTMLElement)?.innerText?.trim();
+                        const img = wrapper.querySelector('img');
+                        const src = img ? img.src : '';
+
+                        if (label === 'Холод' || label === 'Coldness') {
+                            const match = src.match(/cat_cold-lvl-(\d+)/);
+                            if (match && match[1]) {
+                                coldness = parseInt(match[1]);
+                            }
+                        } else if (label === 'Сладость' || label === 'Sweetness') {
+                            const match = src.match(/cat_sweet-lvl-(\d+)/);
+                            if (match && match[1]) {
+                                sweetness = parseInt(match[1]);
+                            }
+                        } else if (label === 'Кислый' || label === 'Sourness') {
+                            const match = src.match(/cat_sour-lvl-(\d+)/);
+                            if (match && match[1]) {
+                                const val = parseInt(match[1]);
+                                sourness = val > 0;
+                            }
+                        }
+                    });
+
+                    // Map to labels (0-3 scale)
+                    // 0/1 = Low/None, 2 = Medium, 3 = High
+                    const coldnessLabels = ["Отсутствует", "Умеренный", "Умеренный", "Интенсивный"];
+                    const sweetnessLabels = ["Нейтральная", "Нейтральная", "Умеренная", "Насыщенная"];
+
+                    const coldnessLabel = coldnessLabels[coldness] || "Отсутствует";
+                    const sweetnessLabel = sweetnessLabels[sweetness] || "Нейтральная";
+
+                    // Puffs and Features
+                    let puffs = 0;
+                    const features: { name: string; value: string }[] = [];
+                    const specItems = document.querySelectorAll('.cat_spec-item');
+                    specItems.forEach(item => {
+                        const label = (item.children[0] as HTMLElement)?.innerText?.trim();
+                        const value = (item.children[1] as HTMLElement)?.innerText?.trim();
+
+                        if (label && value) {
+                            if (label === 'Количество затяжек' || label === 'Puffs') {
+                                puffs = parseInt(value.replace(/\s/g, '')) || 0;
+                            }
+                            features.push({ name: label, value });
+                        }
+                    });
+
+                    // Reviews
+                    const reviews: any[] = [];
+                    const reviewItems = document.querySelectorAll('.catalog_reviews-item');
+                    reviewItems.forEach(item => {
+                        const author = (item.querySelector('.catalog_reviews-item_heading .meta_small-paragraph.n-txt-medium') as HTMLElement)?.innerText?.trim() || 'Anonymous';
+                        const date = (item.querySelector('.hide[fs-list-field="date"]') as HTMLElement)?.innerText?.trim() || '';
+                        const ratingText = (item.querySelector('.hide[fs-list-field="rating"]') as HTMLElement)?.innerText?.trim();
+                        const rating = ratingText ? parseFloat(ratingText) : 5;
+                        const text = (item.querySelector('.catalog_text-content') as HTMLElement)?.innerText?.trim() || '';
+
+                        if (text) {
+                            reviews.push({ author, date, rating, text });
+                        }
+                    });
+
+                    return {
+                        name,
+                        flavor,
+                        puffs,
+                        description,
+                        imageUrl: mainImage,
+                        images,
+                        url: productUrl,
+                        coldness,
+                        sweetness,
+                        sourness,
+                        coldnessLabel,
+                        sweetnessLabel,
+                        features,
+                        reviews
+                    };
+                }, url);
+
+                if (productData.name !== 'Unknown Product') {
+                    const attributes = productAttributes.get(url) || {};
+                    allProducts.push({
+                        ...productData,
+                        ...attributes
+                    } as Product);
                 }
 
-                const name = modelName ? `${modelName} ${flavor}` : flavor || 'Unknown Product';
-                const description = getText('.catalog_decription-text p.meta_small-paragraph') || getText('.catalog_decription-text');
-
-                // Images
-                const mainImage = getSrc('.catalog_main-img-wrapper .catalog_prod-img');
-                const additionalImages = Array.from(document.querySelectorAll('.catalog_grid-small-img .catalog_prod-img'))
-                    .map(img => (img as HTMLImageElement).src)
-                    .filter(src => src !== mainImage);
-
-                const images = [mainImage, ...additionalImages].filter(Boolean);
-
-                // Attributes (Coldness, Sweetness, Sourness)
-                let coldness = 0;
-                let sweetness = 0;
-                let sourness = false;
-
-                const paramWrappers = document.querySelectorAll('.catalog_param-wrapper .same-flavours_rating-wrap');
-                paramWrappers.forEach(wrapper => {
-                    const label = (wrapper.querySelector('.n-subtext') as HTMLElement)?.innerText?.trim();
-                    const img = wrapper.querySelector('img');
-                    const src = img ? img.src : '';
-
-                    if (label === 'Холод' || label === 'Coldness') {
-                        const match = src.match(/cat_cold-lvl-(\d+)/);
-                        if (match && match[1]) {
-                            const val = parseInt(match[1]);
-                            coldness = Math.min(val, 2); // Normalize to 0-2
-                        }
-                    } else if (label === 'Сладость' || label === 'Sweetness') {
-                        const match = src.match(/cat_sweet-lvl-(\d+)/);
-                        if (match && match[1]) {
-                            const val = parseInt(match[1]);
-                            sweetness = Math.min(val, 2); // Normalize to 0-2
-                        }
-                    } else if (label === 'Кислый' || label === 'Sourness') {
-                        const match = src.match(/cat_sour-lvl-(\d+)/);
-                        if (match && match[1]) {
-                            const val = parseInt(match[1]);
-                            sourness = val > 0; // Boolean
-                        }
-                    }
-                });
-
-                // Puffs and Features
-                let puffs = 0;
-                const features: { name: string; value: string }[] = [];
-                const specItems = document.querySelectorAll('.cat_spec-item');
-                specItems.forEach(item => {
-                    const label = (item.children[0] as HTMLElement)?.innerText?.trim();
-                    const value = (item.children[1] as HTMLElement)?.innerText?.trim();
-
-                    if (label && value) {
-                        if (label === 'Количество затяжек' || label === 'Puffs') {
-                            puffs = parseInt(value.replace(/\s/g, '')) || 0;
-                        }
-                        features.push({ name: label, value });
-                    }
-                });
-
-                // Reviews
-                const reviews: Review[] = [];
-                const reviewItems = document.querySelectorAll('.catalog_reviews-item');
-                reviewItems.forEach(item => {
-                    const author = (item.querySelector('.catalog_reviews-item_heading .meta_small-paragraph.n-txt-medium') as HTMLElement)?.innerText?.trim() || 'Anonymous';
-                    const date = (item.querySelector('.hide[fs-list-field="date"]') as HTMLElement)?.innerText?.trim() || '';
-                    const ratingText = (item.querySelector('.hide[fs-list-field="rating"]') as HTMLElement)?.innerText?.trim();
-                    const rating = ratingText ? parseFloat(ratingText) : 5; // Default to 5 if missing
-                    const text = (item.querySelector('.catalog_text-content') as HTMLElement)?.innerText?.trim() || '';
-
-                    if (text) {
-                        reviews.push({ author, date, rating, text });
-                    }
-                });
-
-                return {
-                    name,
-                    flavor,
-                    puffs,
-                    description,
-                    imageUrl: mainImage,
-                    images,
-                    url: productUrl,
-                    coldness,
-                    sweetness,
-                    sourness,
-                    features,
-                    reviews
-                };
-            }, url);
-
-            if (productData.name !== 'Unknown Product') {
-                // Merge with pre-collected attributes
-                const attributes = productAttributes.get(url) || {};
-                allProducts.push({
-                    ...productData,
-                    ...attributes
-                });
+            } catch (e) {
+                console.error(`Failed to scrape product ${url}:`, e);
+            } finally {
+                await page.close();
             }
-
-        } catch (e) {
-            console.error(`Failed to scrape product ${url}:`, e);
-        }
+        }));
     }
 
     console.log(`Successfully scraped ${allProducts.length} products.`);
