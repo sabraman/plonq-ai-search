@@ -47,6 +47,7 @@ async function validateRateLimit() {
                 initData: initData,
             });
             console.log(`Request ${i}: Success`);
+        } catch (e: any) {
             const errorMessage = e.message || JSON.stringify(e);
             if (errorMessage.includes("RATE_LIMIT_EXCEEDED") || errorMessage.includes("RateLimitExceeded")) {
                 console.log(`Request ${i}: BLOCKED (Expected) - ${errorMessage}`);
