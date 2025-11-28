@@ -69,7 +69,7 @@ export function FilterSheet({
   const dynamicFilteredCount =
     products.length > 0
       ? filterProducts(products, { ...localFilters } as FilterState, favorites)
-          .length
+        .length
       : filteredCount;
 
   // Sync local state with store when drawer opens
@@ -127,7 +127,7 @@ export function FilterSheet({
       sweetness: [],
       sourness: [],
       strength: [],
-      sortBy: "rating-desc",
+      sortBy: "default",
       showFavorites: false,
     });
     resetFilters();
@@ -373,17 +373,17 @@ export function FilterSheet({
                     onClick={() =>
                       setLocalFilters((prev) => ({
                         ...prev,
-                        sortBy: "",
+                        sortBy: "default",
                       }))
                     }
                     className={cn(
                       "rounded-xl px-4 py-2 text-sm font-medium transition-all border",
-                      !localFilters.sortBy
+                      localFilters.sortBy === "default"
                         ? "border-gray-200 bg-white text-gray-900 shadow-sm"
                         : "border-transparent bg-gray-100 text-gray-500 hover:bg-gray-200",
                     )}
                     style={
-                      !localFilters.sortBy
+                      localFilters.sortBy === "default"
                         ? { boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }
                         : {}
                     }

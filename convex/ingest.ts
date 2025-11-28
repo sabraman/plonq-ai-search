@@ -57,37 +57,7 @@ export const saveProducts = internalMutation({
     },
 });
 
-export const saveReviews = internalMutation({
-    args: {
-        reviews: v.array(
-            v.object({
-                productName: v.string(), // We'll use name to link for now, or we need to pass the ID back
-                author: v.string(),
-                rating: v.number(),
-                text: v.string(),
-                date: v.string(),
-            })
-        ),
-    },
-    handler: async (ctx, args) => {
-        for (const review of args.reviews) {
-            const product = await ctx.db
-                .query("products")
-                .withIndex("by_name", (q) => q.eq("name", review.productName))
-                .first();
-
-            if (product) {
-                await ctx.db.insert("reviews", {
-                    productId: product._id,
-                    author: review.author,
-                    rating: review.rating,
-                    text: review.text,
-                    date: review.date,
-                });
-            }
-        }
-    },
-});
+// saveReviews mutation removed
 
 export const ingest = action({
     args: {
@@ -190,11 +160,5 @@ Features: ${product.features?.map((f) => `${f.name}: ${f.value}`).join(", ") || 
         await ctx.runMutation(internal.ingest.saveProducts, {
             products: productsWithEmbeddings,
         });
-
-        if (allReviews.length > 0) {
-            await ctx.runMutation(internal.ingest.saveReviews, {
-                reviews: allReviews,
-            });
-        }
     },
 });

@@ -1,12 +1,13 @@
 "use client";
 
-import { useAction, useQuery } from "convex/react";
+import { useAction, usePaginatedQuery, useQuery } from "convex/react";
 import { Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { filterProducts, type Product } from "~/lib/filter-utils";
 import { useFavoritesStore } from "~/store/favorites-store";
 import { useFilterStore } from "~/store/filter-store";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { CatalogHeader } from "./CatalogHeader";
 import { FilterSheet } from "./FilterSheet";
 import { ProductDetails } from "./ProductDetails";
@@ -19,49 +20,95 @@ interface CatalogProps {
 }
 
 export function Catalog({ initialProducts }: CatalogProps) {
-  const convexProducts = useQuery(api.products.list);
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [lastAiQuery, setLastAiQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [recommendationText, setRecommendationText] = useState<string | null>(
-    null,
-  );
-
-  // Update local products state when convex data loads, but only if not searching
-  useEffect(() => {
-    if (convexProducts && !searchQuery) {
-      setProducts(convexProducts as Product[]);
-    }
-  }, [convexProducts, searchQuery]);
-
   const { favorites } = useFavoritesStore();
   const filters = useFilterStore();
   const { resetFilters } = filters;
 
-  const search = useAction(api.products.search);
+  // Transform filters for backend
+  const backendFilters = useMemo(() => ({
+    strength: filters.strength,
+    deviceType: filters.deviceTypes, // Note: Store uses deviceTypes, backend expects deviceType
+    categories: filters.categories,
+    puffsRange: filters.puffsRange,
+    coldness: filters.coldness,
+    sweetness: filters.sweetness,
+    sourness: filters.sourness,
+    showFavorites: filters.showFavorites,
+    sortBy: filters.sortBy,
+  }), [filters]);
 
+  const {
+    results: paginatedProducts,
+    status,
+    loadMore,
+    isLoading,
+  } = usePaginatedQuery(
+    api.products.getPaginatedProducts,
+    {
+      filters: backendFilters,
+      favoriteIds: filters.showFavorites ? (favorites as unknown as Id<"products">[]) : undefined
+    },
+    { initialNumItems: 50 }
+  );
+
+  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [lastAiQuery, setLastAiQuery] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [recommendationText, setRecommendationText] = useState<string | null>(null);
+
+
+
+  // Sync paginated results to local state (when not searching)
+  useEffect(() => {
+    if (paginatedProducts && !searchQuery) {
+      // Cast to Product[] because paginated query returns generic objects
+      setProducts(paginatedProducts as unknown as Product[]);
+    }
+  }, [paginatedProducts, searchQuery]);
+
+  // Infinite Scroll Observer
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const loadMoreRef = useCallback((node: HTMLDivElement | null) => {
+    if (isLoading) return;
+    if (observerRef.current) observerRef.current.disconnect();
+
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0]?.isIntersecting) {
+        console.log(`[InfiniteScroll] Intersecting. Status: ${status}`);
+        if (status === "CanLoadMore") {
+          console.log("[InfiniteScroll] Loading more...");
+          const start = performance.now();
+          loadMore(50);
+          console.log(`[InfiniteScroll] LoadMore called in ${performance.now() - start}ms`);
+        }
+      }
+    }, { rootMargin: "1000px" });
+
+    if (node) observerRef.current.observe(node);
+  }, [isLoading, status, loadMore]);
+
+  useEffect(() => {
+    console.log(`[Catalog] Status: ${status}, IsLoading: ${isLoading}, Products: ${paginatedProducts?.length}`);
+  }, [status, isLoading, paginatedProducts]);
+
+
+  const search = useAction(api.products.search);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleSearch = useCallback(
     async (force = false) => {
       if (!searchQuery?.trim()) return;
-      // Don't re-fetch if query is same as last successful AI search, unless forced
       if (!force && searchQuery === lastAiQuery) return;
 
-      // Create new controller
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
-      setLoading(true);
-      setRecommendationText(""); // Clear previous text
+      setAiLoading(true);
+      setRecommendationText("");
 
       try {
-        // 1. Fetch products (Fast)
-        const { retrieveRawInitData } = await import(
-          "@telegram-apps/sdk-react"
-        );
+        const { retrieveRawInitData } = await import("@telegram-apps/sdk-react");
         const initData = retrieveRawInitData();
 
         if (!initData) {
@@ -71,7 +118,7 @@ export function Catalog({ initialProducts }: CatalogProps) {
 
         const products = await search({
           preferences: searchQuery,
-          initData: initData,
+          initData: initData!,
         });
 
         if (products) {
@@ -79,7 +126,7 @@ export function Catalog({ initialProducts }: CatalogProps) {
           setLastAiQuery(searchQuery);
         }
 
-        // 2. Stream recommendation (Optimistic)
+        // Stream recommendation logic...
         const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
         const siteUrl = convexUrl.replace(".cloud", ".site");
 
@@ -88,30 +135,26 @@ export function Catalog({ initialProducts }: CatalogProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             preferences: searchQuery,
-            products: products.slice(0, 5), // Send top 5 for context
+            products: products.slice(0, 5),
           }),
           signal: controller.signal,
         });
 
         if (!response.body) return;
-
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          // Paranoid check: stop if we've been aborted (even if fetch didn't throw yet)
           if (abortControllerRef.current !== controller) break;
-
-          const chunk = decoder.decode(value);
-          setRecommendationText((prev) => (prev || "") + chunk);
+          setRecommendationText((prev) => (prev || "") + decoder.decode(value));
         }
       } catch {
         // ...
       } finally {
         if (abortControllerRef.current === controller) {
-          setLoading(false);
+          setAiLoading(false);
           abortControllerRef.current = null;
         }
       }
@@ -125,126 +168,106 @@ export function Catalog({ initialProducts }: CatalogProps) {
       if (searchQuery.trim() && searchQuery !== lastAiQuery) {
         handleSearch();
       }
-    }, 400); // 400ms debounce
-
+    }, 400);
     return () => clearTimeout(timer);
   }, [searchQuery, lastAiQuery, handleSearch]);
 
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value);
-  };
+  const handleSearchChange = (value: string) => setSearchQuery(value);
 
   const handleSearchSubmit = async () => {
     if (!searchQuery.trim()) return;
-    // Allow manual submit to force refresh even if query is same
     await handleSearch(true);
   };
 
-  // Apply filters
+  // Filter logic for AI search results (local filtering)
   const filteredProducts = useMemo(() => {
-    let result = products;
+    // If searching, we use the AI results stored in `products`
+    if (searchQuery.trim()) {
+      // We trust the backend AI search results.
+      // If we filter by exact text match here, we lose the benefit of semantic search.
 
-    // Filter by search query (local filtering)
-    if (searchQuery.trim() && searchQuery !== lastAiQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (product) =>
-          product.name.toLowerCase().includes(query) ||
-          product.description.toLowerCase().includes(query),
-      );
+      // Apply client-side filters on top of AI results if needed?
+      // Yes, let's keep using filterProducts for consistency if user refines AI results with chips.
+      return filterProducts(products, filters, favorites);
     }
 
-    // Use centralized filter logic
-    // Disable sorting if we are showing AI search results (relevance matters more)
-    // const isAiSearchActive = searchQuery.trim() && searchQuery === lastAiQuery;
+    // If NOT searching, `products` is updated from `paginatedProducts`.
+    // And `paginatedProducts` is ALREADY filtered by backend.
+    // So we just return `products` (which is `paginatedProducts`).
+    return products;
 
-    let finalResult = filterProducts(result, filters, favorites);
+  }, [products, searchQuery, filters, favorites]);
 
-    // AI Re-ranking (Frontend Sync)
-    // If the AI explicitly recommends a product (bolded text), move it to the top
+  // AI Re-ranking (Frontend Sync)
+  const finalProducts = useMemo(() => {
+    let result = filteredProducts;
     if (recommendationText) {
       const matches = recommendationText.match(/\*\*(.*?)\*\*/g);
       if (matches) {
-        const promotedNames = matches.map((s) =>
-          s.slice(2, -2).trim().toLowerCase(),
-        );
-        finalResult = [...finalResult].sort((a, b) => {
+        const promotedNames = matches.map((s) => s.slice(2, -2).trim().toLowerCase());
+        result = [...result].sort((a, b) => {
           const aName = a.name.toLowerCase();
           const bName = b.name.toLowerCase();
-          // Check if name contains any of the promoted strings
           const aPromoted = promotedNames.some((n) => aName.includes(n));
           const bPromoted = promotedNames.some((n) => bName.includes(n));
-
           if (aPromoted && !bPromoted) return -1;
           if (!aPromoted && bPromoted) return 1;
           return 0;
         });
       }
     }
-
-    return finalResult;
-  }, [
-    products,
-    searchQuery,
-    filters,
-    lastAiQuery,
-    favorites,
-    recommendationText,
-  ]);
+    return result;
+  }, [filteredProducts, recommendationText]);
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const loading = isLoading || aiLoading;
+
+  const totalFilteredCount = useQuery(api.products.getProductsCount, {
+    filters: backendFilters,
+    favoriteIds: filters.showFavorites ? (favorites as unknown as Id<"products">[]) : undefined
+  });
 
   return (
     <div className="mx-auto max-w-7xl">
       <CatalogHeader
         totalCount={initialProducts.length}
-        filteredCount={filteredProducts.length}
+        filteredCount={searchQuery ? finalProducts.length : (totalFilteredCount ?? 0)}
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
         onSearchSubmit={handleSearchSubmit}
         loading={loading}
         onClear={() => {
           setSearchQuery("");
-          setLastAiQuery(""); // Reset last query so we can search same thing again
+          setLastAiQuery("");
           resetFilters();
           setRecommendationText(null);
-          setProducts(initialProducts); // Reset to initial products on clear
         }}
         filterComponent={
           <FilterSheet
             products={products}
-            filteredCount={filteredProducts.length}
+            filteredCount={searchQuery ? finalProducts.length : (totalFilteredCount ?? 0)}
           />
         }
       />
 
       {recommendationText && (
-        <BlurFade delay={0.1}>
+        <BlurFade delay={0.02}>
           <div className="mb-8 rounded-2xl bg-gradient-to-r from-purple-50 to-blue-50 p-6 border border-purple-100">
             <div className="flex gap-3">
               <div className="mt-1 shrink-0">
                 <Sparkles className="h-5 w-5 text-purple-500 animate-pulse" />
               </div>
               <div>
-                <h3 className="mb-1 font-semibold text-purple-900">
-                  AI Рекомендация
-                </h3>
+                <h3 className="mb-1 font-semibold text-purple-900">AI Рекомендация</h3>
                 <p className="text-sm leading-relaxed text-purple-800/80">
-                  {recommendationText
-                    ?.split(/(\*\*.*?\*\*)/)
-                    .map((part, index) =>
-                      part.startsWith("**") && part.endsWith("**") ? (
-                        <strong
-                          // biome-ignore lint/suspicious/noArrayIndexKey: Splitting text for highlighting
-                          key={index}
-                          className="font-bold text-purple-900"
-                        >
-                          {part.slice(2, -2)}
-                        </strong>
-                      ) : (
-                        part
-                      ),
-                    )}
+                  {recommendationText?.split(/(\*\*.*?\*\*)/).map((part, index) =>
+                    part.startsWith("**") && part.endsWith("**") ? (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: Static split parts, index is stable
+                      <strong key={index} className="font-bold text-purple-900">{part.slice(2, -2)}</strong>
+                    ) : (
+                      part
+                    )
+                  )}
                 </p>
               </div>
             </div>
@@ -252,30 +275,35 @@ export function Catalog({ initialProducts }: CatalogProps) {
         </BlurFade>
       )}
 
-      {!loading && filteredProducts.length === 0 ? (
+      {!loading && finalProducts.length === 0 ? (
         <div className="flex min-h-[400px] flex-col items-center justify-center text-center">
           <p className="text-lg font-medium text-gray-900">Ничего не найдено</p>
-          <p className="mt-2 text-gray-500">
-            Попробуйте изменить параметры поиска или фильтры
-          </p>
+          <p className="mt-2 text-gray-500">Попробуйте изменить параметры поиска или фильтры</p>
           <Button
             variant="link"
             className="mt-4 text-blue-600"
             onClick={() => {
               setSearchQuery("");
               resetFilters();
-              setProducts(initialProducts);
             }}
           >
             Сбросить все фильтры
           </Button>
         </div>
       ) : (
-        <ProductList
-          products={filteredProducts}
-          onProductClick={setSelectedProduct}
-          loading={loading}
-        />
+        <>
+          <ProductList
+            products={finalProducts}
+            onProductClick={setSelectedProduct}
+            loading={loading}
+          />
+          {/* Load More Trigger */}
+          {!searchQuery && status === "CanLoadMore" && (
+            <div ref={loadMoreRef} className="py-8 flex justify-center">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-200 border-t-blue-500" />
+            </div>
+          )}
+        </>
       )}
 
       <ProductDetails

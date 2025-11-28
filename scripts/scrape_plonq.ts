@@ -24,9 +24,6 @@ const ATTRIBUTE_URLS = [
     { url: 'https://plonq.ru/catalog?device-type=Одноразовые', attr: { deviceType: 'Disposable' } },
     { url: 'https://plonq.ru/catalog?device-type=POD-системы', attr: { deviceType: 'POD System' } },
     { url: 'https://plonq.ru/catalog?device-type=Жидкости', attr: { deviceType: 'E-Liquid' } },
-
-    // Puffs (We extract this from page, but good to have as check or category if needed, 
-    // but schema uses number. Let's skip mapping puffs to categories for now unless requested as tags)
 ];
 
 const OUTPUT_FILE = path.join(process.cwd(), 'products.json');
@@ -63,36 +60,71 @@ async function scrape() {
     const browser = await puppeteer.launch({
         headless: true,
         executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 800 });
 
     // Map: Product URL -> Partial<Product> attributes
     const productAttributes = new Map<string, Partial<Product>>();
 
-    // Step 1: Visit filtered URLs to collect attributes
-    console.log('Step 1: Collecting attributes from filtered pages...');
-    for (const { url, attr } of ATTRIBUTE_URLS) {
-        console.log(`Scanning ${url}...`);
+    // Helper to get links from a page
+    const getLinks = async (url: string) => {
+        const page = await browser.newPage();
+        // Optimize: Block resources
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            if (['image', 'font', 'stylesheet', 'media'].includes(req.resourceType())) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
+
         try {
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            // Wait for network idle to ensure content is loaded
+            await page.goto(url, { waitUntil: 'networkidle2' });
+
+            // Wait for at least one catalog item to appear
+            try {
+                await page.waitForSelector('a[href^="/catalog/"]', { timeout: 5000 });
+            } catch (e) {
+                console.log(`No products found on ${url} (or timeout)`);
+                return [];
+            }
+
+            // Auto-scroll to trigger lazy loading
             await autoScroll(page);
 
             const urls = await page.evaluate(() => {
                 const links = document.querySelectorAll('a[href^="/catalog/"]');
                 return Array.from(links).map(link => (link as HTMLAnchorElement).href);
             });
+            return urls;
+        } catch (e) {
+            console.error(`Failed to get links from ${url}:`, e);
+            return [];
+        } finally {
+            await page.close();
+        }
+    };
 
+    // Step 1: Visit filtered URLs to collect attributes
+    console.log('Step 1: Collecting attributes from filtered pages...');
+
+    // Process filters in parallel with limited concurrency
+    const FILTER_CONCURRENCY = 3;
+    const filterChunks = chunk(ATTRIBUTE_URLS, FILTER_CONCURRENCY);
+
+    for (const batch of filterChunks) {
+        await Promise.all(batch.map(async ({ url, attr }) => {
+            console.log(`Scanning ${url}...`);
+            const urls = await getLinks(url);
             console.log(`Found ${urls.length} products for attributes:`, attr);
 
             for (const productUrl of urls) {
                 const existing = productAttributes.get(productUrl) || {};
-
                 // Merge attributes
                 if (attr.strength) existing.strength = attr.strength;
                 if (attr.deviceType) existing.deviceType = attr.deviceType;
-
                 if (attr.categories) {
                     existing.categories = existing.categories || [];
                     for (const cat of attr.categories) {
@@ -101,44 +133,22 @@ async function scrape() {
                         }
                     }
                 }
-
                 productAttributes.set(productUrl, existing);
             }
-
-        } catch (e) {
-            console.error(`Failed to scan ${url}:`, e);
-        }
+        }));
     }
 
-    // Also scan the main catalog to ensure we get ALL products, even those without specific filters
+    // Also scan the main catalog
     console.log('Scanning main catalog for all products...');
     const allProductUrls = new Set<string>(productAttributes.keys());
-    try {
-        await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await autoScroll(page);
-        const urls = await page.evaluate(() => {
-            const links = document.querySelectorAll('a[href^="/catalog/"]');
-            return Array.from(links).map(link => (link as HTMLAnchorElement).href);
-        });
-        urls.forEach(u => allProductUrls.add(u));
-    } catch (e) {
-        console.error('Failed to scan main catalog:', e);
-    }
+    const mainCatalogUrls = await getLinks(BASE_URL);
+    mainCatalogUrls.forEach(u => allProductUrls.add(u));
 
     console.log(`Total unique products to scrape: ${allProductUrls.size}`);
     const allProducts: Product[] = [];
-    // ... (imports)
-
-    // Helper for concurrency
-    const chunk = <T>(arr: T[], size: number): T[][] =>
-        Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
-            arr.slice(i * size, i * size + size)
-        );
-
-    // ... (inside scrape function)
 
     // Step 2: Visit each product page with concurrency
-    const CONCURRENCY = 2;
+    const CONCURRENCY = 5; // Increased concurrency since we block resources
     const chunks = chunk(Array.from(allProductUrls), CONCURRENCY);
 
     for (const [i, batch] of chunks.entries()) {
@@ -146,12 +156,11 @@ async function scrape() {
 
         await Promise.all(batch.map(async (url) => {
             const page = await browser.newPage();
-            // Block images/fonts for speed if possible, but we need images for src. 
-            // Actually, we need to load images to get the src? No, usually in DOM.
-            // Let's just block fonts/css to speed up.
+            // Block fonts/css/media but allow images for src extraction? 
+            // Actually, we can block images too, the src attribute is usually present in the DOM even if image request is blocked.
             await page.setRequestInterception(true);
             page.on('request', (req) => {
-                if (['font', 'stylesheet'].includes(req.resourceType())) {
+                if (['font', 'stylesheet', 'media'].includes(req.resourceType())) {
                     req.abort();
                 } else {
                     req.continue();
@@ -159,7 +168,11 @@ async function scrape() {
             });
 
             try {
-                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                // Wait for network idle or specific selector
+                await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+                // Wait for main content
+                await page.waitForSelector('h1', { timeout: 10000 });
 
                 const productData = await page.evaluate((productUrl) => {
                     const getText = (selector: string) => {
@@ -191,7 +204,7 @@ async function scrape() {
 
                     const images = [mainImage, ...additionalImages].filter(Boolean);
 
-                    // Attributes (Coldness, Sweetness, Sourness)
+                    // Attributes
                     let coldness = 0;
                     let sweetness = 0;
                     let sourness = false;
@@ -204,28 +217,18 @@ async function scrape() {
 
                         if (label === 'Холод' || label === 'Coldness') {
                             const match = src.match(/cat_cold-lvl-(\d+)/);
-                            if (match && match[1]) {
-                                coldness = parseInt(match[1]);
-                            }
+                            if (match && match[1]) coldness = parseInt(match[1]);
                         } else if (label === 'Сладость' || label === 'Sweetness') {
                             const match = src.match(/cat_sweet-lvl-(\d+)/);
-                            if (match && match[1]) {
-                                sweetness = parseInt(match[1]);
-                            }
+                            if (match && match[1]) sweetness = parseInt(match[1]);
                         } else if (label === 'Кислый' || label === 'Sourness') {
                             const match = src.match(/cat_sour-lvl-(\d+)/);
-                            if (match && match[1]) {
-                                const val = parseInt(match[1]);
-                                sourness = val > 0;
-                            }
+                            if (match && match[1]) sourness = parseInt(match[1]) > 0;
                         }
                     });
 
-                    // Map to labels (0-3 scale)
-                    // 0/1 = Low/None, 2 = Medium, 3 = High
                     const coldnessLabels = ["Отсутствует", "Умеренный", "Умеренный", "Интенсивный"];
                     const sweetnessLabels = ["Нейтральная", "Нейтральная", "Умеренная", "Насыщенная"];
-
                     const coldnessLabel = coldnessLabels[coldness] || "Отсутствует";
                     const sweetnessLabel = sweetnessLabels[sweetness] || "Нейтральная";
 
@@ -255,35 +258,18 @@ async function scrape() {
                         const rating = ratingText ? parseFloat(ratingText) : 5;
                         const text = (item.querySelector('.catalog_text-content') as HTMLElement)?.innerText?.trim() || '';
 
-                        if (text) {
-                            reviews.push({ author, date, rating, text });
-                        }
+                        if (text) reviews.push({ author, date, rating, text });
                     });
 
                     return {
-                        name,
-                        flavor,
-                        puffs,
-                        description,
-                        imageUrl: mainImage,
-                        images,
-                        url: productUrl,
-                        coldness,
-                        sweetness,
-                        sourness,
-                        coldnessLabel,
-                        sweetnessLabel,
-                        features,
-                        reviews
+                        name, flavor, puffs, description, imageUrl: mainImage, images, url: productUrl,
+                        coldness, sweetness, sourness, coldnessLabel, sweetnessLabel, features, reviews
                     };
                 }, url);
 
                 if (productData.name !== 'Unknown Product') {
                     const attributes = productAttributes.get(url) || {};
-                    allProducts.push({
-                        ...productData,
-                        ...attributes
-                    } as Product);
+                    allProducts.push({ ...productData, ...attributes } as Product);
                 }
 
             } catch (e) {
@@ -305,26 +291,25 @@ async function autoScroll(page: any) {
     await page.evaluate(async () => {
         await new Promise<void>((resolve) => {
             let totalHeight = 0;
-            const distance = 100;
+            const distance = 200; // Increased scroll distance
             const timer = setInterval(() => {
                 const scrollHeight = document.body.scrollHeight;
                 window.scrollBy(0, distance);
                 totalHeight += distance;
 
                 if (totalHeight >= scrollHeight - window.innerHeight) {
-                    if ((document.body.scrollHeight - scrollHeight) < 50 && totalHeight > 20000) {
-                        clearInterval(timer);
-                        resolve();
-                    }
+                    clearInterval(timer);
+                    resolve();
                 }
-            }, 100);
-
-            setTimeout(() => {
-                clearInterval(timer);
-                resolve();
-            }, 60000);
+            }, 50); // Faster scroll interval
         });
     });
+}
+
+function chunk<T>(arr: T[], size: number): T[][] {
+    return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
+        arr.slice(i * size, i * size + size)
+    );
 }
 
 scrape().catch(console.error);

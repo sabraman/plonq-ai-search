@@ -8,12 +8,13 @@
  * @module
  */
 
+import type * as analytics from "../analytics.js";
 import type * as http from "../http.js";
 import type * as ingest from "../ingest.js";
 import type * as migrations from "../migrations.js";
-import type * as posts from "../posts.js";
 import type * as products from "../products.js";
 import type * as rateLimit from "../rateLimit.js";
+import type * as verify_migration from "../verify_migration.js";
 
 import type {
   ApiFromModules,
@@ -22,12 +23,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  analytics: typeof analytics;
   http: typeof http;
   ingest: typeof ingest;
   migrations: typeof migrations;
-  posts: typeof posts;
   products: typeof products;
   rateLimit: typeof rateLimit;
+  verify_migration: typeof verify_migration;
 }>;
 
 /**

@@ -7,9 +7,10 @@ import { useFavoritesStore } from "~/store/favorites-store";
 interface ProductCardProps {
   product: Product;
   onClick?: () => void;
+  priority?: boolean;
 }
 
-export function ProductCard({ product, onClick }: ProductCardProps) {
+export function ProductCard({ product, onClick, priority = false }: ProductCardProps) {
   const { isFavorite, toggleFavorite } = useFavoritesStore();
   const { impact } = useHaptics();
 
@@ -21,9 +22,8 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
           <div
             // biome-ignore lint/suspicious/noArrayIndexKey: Static array for visual dots
             key={i}
-            className={`h-2 w-2 rounded-full ${
-              i < count ? colorClass : "bg-gray-200"
-            }`}
+            className={`h-2 w-2 rounded-full ${i < count ? colorClass : "bg-gray-200"
+              }`}
           />
         ))}
       </div>
@@ -43,11 +43,10 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
       className="flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors h-8 w-8"
     >
       <Heart
-        className={`transition-colors h-5 w-5 ${
-          product._id && isFavorite(product._id)
+        className={`transition-colors h-5 w-5 ${product._id && isFavorite(product._id)
             ? "fill-red-500 text-red-500"
             : "text-gray-400"
-        }`}
+          }`}
       />
     </button>
   );
@@ -57,9 +56,9 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
       <span>
         {product.reviews && product.reviews.length > 0
           ? (
-              product.reviews.reduce((acc, r) => acc + r.rating, 0) /
-              product.reviews.length
-            ).toFixed(1)
+            product.reviews.reduce((acc, r) => acc + r.rating, 0) /
+            product.reviews.length
+          ).toFixed(1)
           : "0.0"}
       </span>
       {product.reviews && product.reviews.length > 0 && (
@@ -112,6 +111,7 @@ export function ProductCard({ product, onClick }: ProductCardProps) {
           fill
           className="object-contain"
           sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+          priority={priority}
         />
       </div>
 

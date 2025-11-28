@@ -13,6 +13,10 @@ const config = {
 				protocol: "https",
 				hostname: "cdn.prod.website-files.com",
 			},
+			{
+				protocol: "https",
+				hostname: "plonq.ru",
+			},
 		],
 	},
 };

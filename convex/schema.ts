@@ -2,11 +2,7 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  posts: defineTable({
-    name: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_name", ["name"]),
+  // posts table removed
   products: defineTable({
     name: v.string(),
     flavor: v.string(),
@@ -34,25 +30,34 @@ export default defineSchema({
         })
       )
     ),
-    embedding: v.array(v.float64()),
+    // embedding: v.array(v.float64()), // Removed, moved to productEmbeddings
     searchText: v.optional(v.string()),
+  }).searchIndex("search_body", {
+    searchField: "searchText",
+  }).index("by_name", ["name"]),
+
+  productEmbeddings: defineTable({
+    productId: v.id("products"),
+    embedding: v.array(v.float64()),
+    strength: v.optional(v.string()),
+    deviceType: v.optional(v.string()),
   }).vectorIndex("by_embedding", {
     vectorField: "embedding",
     dimensions: 3072,
     filterFields: ["strength", "deviceType"],
-  }).searchIndex("search_body", {
-    searchField: "searchText",
-  }).index("by_name", ["name"]),
-  reviews: defineTable({
-    productId: v.id("products"),
-    author: v.string(),
-    rating: v.number(),
-    text: v.string(),
-    date: v.string(),
-  }).index("by_product", ["productId"]),
+  }).index("by_productId", ["productId"]),
+
+  // reviews table removed
   rateLimits: defineTable({
     key: v.string(),
     count: v.number(),
     resetTime: v.number(),
   }).index("by_key", ["key"]),
+  searchLogs: defineTable({
+    query: v.string(),
+    userId: v.optional(v.string()),
+    timestamp: v.number(),
+    resultsCount: v.number(),
+    type: v.string(), // "vector" | "keyword" | "hybrid"
+  }).index("by_timestamp", ["timestamp"]),
 }); 

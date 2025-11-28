@@ -3,6 +3,8 @@ import "~/styles/globals.css";
 import type { Metadata, Viewport } from "next";
 import { Montserrat } from "next/font/google";
 import { ClientRoot } from "~/components/common/client-root";
+import { Metrika } from "~/components/common/metrika";
+import { BottomNavBar } from "~/components/ui/bottom-nav-bar";
 import { env } from "~/env";
 
 const montserrat = Montserrat({
@@ -33,6 +35,8 @@ export default function RootLayout({
         <ClientRoot debug={env.NODE_ENV === "development"}>
           {children}
         </ClientRoot>
+        <BottomNavBar stickyBottom />
+        <Metrika />
       </body>
     </html>
   );

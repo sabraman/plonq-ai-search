@@ -39,7 +39,7 @@ export const INITIAL_FILTERS: FilterState = {
   sweetness: [],
   sourness: [],
   strength: [],
-  sortBy: "rating-desc",
+  sortBy: "default",
   showFavorites: false,
 };
 
