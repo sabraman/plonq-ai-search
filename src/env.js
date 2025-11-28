@@ -8,6 +8,7 @@ export const env = createEnv({
    */
   server: {
     TG_API_TOKEN: z.string(),
+    TG_ADMIN_ID: z.string(),
     CONVEX_DEPLOYMENT: z.string().optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
@@ -33,6 +34,7 @@ export const env = createEnv({
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
     TG_API_TOKEN: process.env.TG_API_TOKEN,
+    TG_ADMIN_ID: process.env.TG_ADMIN_ID,
     CONVEX_DEPLOYMENT: process.env.CONVEX_DEPLOYMENT,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
     NEXT_PUBLIC_TG_APP_URL: process.env.NEXT_PUBLIC_TG_APP_URL,

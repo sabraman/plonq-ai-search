@@ -47,11 +47,11 @@ async function validateRateLimit() {
                 initData: initData,
             });
             console.log(`Request ${i}: Success`);
-        } catch (e: any) {
-            if (e.message.includes("Rate limit exceeded")) {
-                console.log(`Request ${i}: BLOCKED (Expected) - ${e.message}`);
+            const errorMessage = e.message || JSON.stringify(e);
+            if (errorMessage.includes("RATE_LIMIT_EXCEEDED") || errorMessage.includes("RateLimitExceeded")) {
+                console.log(`Request ${i}: BLOCKED (Expected) - ${errorMessage}`);
             } else {
-                console.log(`Request ${i}: FAILED (Unexpected) - ${e.message}`);
+                console.log(`Request ${i}: FAILED (Unexpected) - ${errorMessage}`);
             }
         }
     }

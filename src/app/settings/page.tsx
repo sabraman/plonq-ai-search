@@ -1,23 +1,13 @@
 import { getAuth } from "~/lib/security";
+import { env } from "~/env";
 
 export default async function SettingsPage() {
   const auth = await getAuth();
 
-  if (!auth.isAuthorized || !auth.userData) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-4 text-center">
-        <h1 className="text-xl font-bold text-red-500">Access Denied</h1>
-        <p className="mt-2 text-gray-600">
-          Please open this app from Telegram.
-        </p>
-      </div>
-    );
-  }
+  const adminId = env.TG_ADMIN_ID;
+  const userId = auth.userData?.id.toString();
 
-  const adminId = process.env.TG_ADMIN_ID;
-  const userId = auth.userData.id.toString();
-
-  if (userId !== adminId) {
+  if (!auth.isAuthorized || !auth.userData || userId !== adminId) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4 text-center">
         <h1 className="text-xl font-bold text-red-500">Access Restricted</h1>
