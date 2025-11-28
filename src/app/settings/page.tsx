@@ -1,5 +1,6 @@
 import { getAuth } from "~/lib/security";
 import { env } from "~/env";
+import { BackButton } from "~/components/BackButton";
 
 export default async function SettingsPage() {
   const auth = await getAuth();
@@ -21,6 +22,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <BackButton />
       <div className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-sm">
         <h1 className="mb-6 text-2xl font-bold text-gray-900">
           Admin Settings
