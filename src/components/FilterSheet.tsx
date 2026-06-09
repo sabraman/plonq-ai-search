@@ -69,7 +69,7 @@ export function FilterSheet({
   const dynamicFilteredCount =
     products.length > 0
       ? filterProducts(products, { ...localFilters } as FilterState, favorites)
-        .length
+          .length
       : filteredCount;
 
   // Sync local state with store when drawer opens
@@ -212,7 +212,10 @@ export function FilterSheet({
           <span className="ml-1 text-blue-500">{filteredCount}</span>
         </Button>
       </DrawerTrigger>
-      <DrawerContent className="h-[90vh] rounded-t-[32px]">
+      <DrawerContent
+        aria-describedby={undefined}
+        className="h-[90vh] rounded-t-[32px]"
+      >
         <div className="mx-auto w-full max-w-md flex flex-col h-full">
           <DrawerHeader className="flex items-center justify-between border-b px-6 py-4">
             <DrawerTitle className="text-xl font-bold">Фильтры</DrawerTitle>

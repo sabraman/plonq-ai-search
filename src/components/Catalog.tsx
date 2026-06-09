@@ -25,17 +25,20 @@ export function Catalog({ initialProducts }: CatalogProps) {
   const { resetFilters } = filters;
 
   // Transform filters for backend
-  const backendFilters = useMemo(() => ({
-    strength: filters.strength,
-    deviceType: filters.deviceTypes, // Note: Store uses deviceTypes, backend expects deviceType
-    categories: filters.categories,
-    puffsRange: filters.puffsRange,
-    coldness: filters.coldness,
-    sweetness: filters.sweetness,
-    sourness: filters.sourness,
-    showFavorites: filters.showFavorites,
-    sortBy: filters.sortBy,
-  }), [filters]);
+  const backendFilters = useMemo(
+    () => ({
+      strength: filters.strength,
+      deviceType: filters.deviceTypes, // Note: Store uses deviceTypes, backend expects deviceType
+      categories: filters.categories,
+      puffsRange: filters.puffsRange,
+      coldness: filters.coldness,
+      sweetness: filters.sweetness,
+      sourness: filters.sourness,
+      showFavorites: filters.showFavorites,
+      sortBy: filters.sortBy,
+    }),
+    [filters],
+  );
 
   const {
     results: paginatedProducts,
@@ -46,18 +49,20 @@ export function Catalog({ initialProducts }: CatalogProps) {
     api.products.getPaginatedProducts,
     {
       filters: backendFilters,
-      favoriteIds: filters.showFavorites ? (favorites as unknown as Id<"products">[]) : undefined
+      favoriteIds: filters.showFavorites
+        ? (favorites as unknown as Id<"products">[])
+        : undefined,
     },
-    { initialNumItems: 50 }
+    { initialNumItems: 50 },
   );
 
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [searchQuery, setSearchQuery] = useState("");
   const [lastAiQuery, setLastAiQuery] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [recommendationText, setRecommendationText] = useState<string | null>(null);
-
-
+  const [recommendationText, setRecommendationText] = useState<string | null>(
+    null,
+  );
 
   // Sync paginated results to local state (when not searching)
   useEffect(() => {
@@ -69,29 +74,38 @@ export function Catalog({ initialProducts }: CatalogProps) {
 
   // Infinite Scroll Observer
   const observerRef = useRef<IntersectionObserver | null>(null);
-  const loadMoreRef = useCallback((node: HTMLDivElement | null) => {
-    if (isLoading) return;
-    if (observerRef.current) observerRef.current.disconnect();
+  const loadMoreRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (isLoading) return;
+      if (observerRef.current) observerRef.current.disconnect();
 
-    observerRef.current = new IntersectionObserver(entries => {
-      if (entries[0]?.isIntersecting) {
-        console.log(`[InfiniteScroll] Intersecting. Status: ${status}`);
-        if (status === "CanLoadMore") {
-          console.log("[InfiniteScroll] Loading more...");
-          const start = performance.now();
-          loadMore(50);
-          console.log(`[InfiniteScroll] LoadMore called in ${performance.now() - start}ms`);
-        }
-      }
-    }, { rootMargin: "1000px" });
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          if (entries[0]?.isIntersecting) {
+            console.log(`[InfiniteScroll] Intersecting. Status: ${status}`);
+            if (status === "CanLoadMore") {
+              console.log("[InfiniteScroll] Loading more...");
+              const start = performance.now();
+              loadMore(50);
+              console.log(
+                `[InfiniteScroll] LoadMore called in ${performance.now() - start}ms`,
+              );
+            }
+          }
+        },
+        { rootMargin: "1000px" },
+      );
 
-    if (node) observerRef.current.observe(node);
-  }, [isLoading, status, loadMore]);
+      if (node) observerRef.current.observe(node);
+    },
+    [isLoading, status, loadMore],
+  );
 
   useEffect(() => {
-    console.log(`[Catalog] Status: ${status}, IsLoading: ${isLoading}, Products: ${paginatedProducts?.length}`);
+    console.log(
+      `[Catalog] Status: ${status}, IsLoading: ${isLoading}, Products: ${paginatedProducts?.length}`,
+    );
   }, [status, isLoading, paginatedProducts]);
-
 
   const search = useAction(api.products.search);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -108,22 +122,18 @@ export function Catalog({ initialProducts }: CatalogProps) {
       setRecommendationText("");
 
       try {
-        const { retrieveRawInitData } = await import("@telegram-apps/sdk-react");
-        const initData = retrieveRawInitData();
-
-        if (!initData) {
-          console.error("No initData available");
-          return;
-        }
-
         const products = await search({
           preferences: searchQuery,
-          initData: initData!,
         });
 
         if (products) {
-          setProducts(products as unknown as Product[]);
+          const nextProducts = products as unknown as Product[];
+          setProducts(nextProducts);
           setLastAiQuery(searchQuery);
+
+          if (nextProducts.length === 0) {
+            return;
+          }
         }
 
         // Stream recommendation logic...
@@ -195,7 +205,6 @@ export function Catalog({ initialProducts }: CatalogProps) {
     // And `paginatedProducts` is ALREADY filtered by backend.
     // So we just return `products` (which is `paginatedProducts`).
     return products;
-
   }, [products, searchQuery, filters, favorites]);
 
   // AI Re-ranking (Frontend Sync)
@@ -204,7 +213,9 @@ export function Catalog({ initialProducts }: CatalogProps) {
     if (recommendationText) {
       const matches = recommendationText.match(/\*\*(.*?)\*\*/g);
       if (matches) {
-        const promotedNames = matches.map((s) => s.slice(2, -2).trim().toLowerCase());
+        const promotedNames = matches.map((s) =>
+          s.slice(2, -2).trim().toLowerCase(),
+        );
         result = [...result].sort((a, b) => {
           const aName = a.name.toLowerCase();
           const bName = b.name.toLowerCase();
@@ -219,19 +230,34 @@ export function Catalog({ initialProducts }: CatalogProps) {
     return result;
   }, [filteredProducts, recommendationText]);
 
+  const recommendationParts = useMemo(() => {
+    if (!recommendationText) return [];
+
+    let offset = 0;
+    return recommendationText.split(/(\*\*.*?\*\*)/).map((part) => {
+      const key = `${offset}-${part}`;
+      offset += part.length;
+      return { key, part };
+    });
+  }, [recommendationText]);
+
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const loading = isLoading || aiLoading;
 
   const totalFilteredCount = useQuery(api.products.getProductsCount, {
     filters: backendFilters,
-    favoriteIds: filters.showFavorites ? (favorites as unknown as Id<"products">[]) : undefined
+    favoriteIds: filters.showFavorites
+      ? (favorites as unknown as Id<"products">[])
+      : undefined,
   });
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="w-full">
       <CatalogHeader
         totalCount={initialProducts.length}
-        filteredCount={searchQuery ? finalProducts.length : (totalFilteredCount ?? 0)}
+        filteredCount={
+          searchQuery ? finalProducts.length : (totalFilteredCount ?? 0)
+        }
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
         onSearchSubmit={handleSearchSubmit}
@@ -245,7 +271,9 @@ export function Catalog({ initialProducts }: CatalogProps) {
         filterComponent={
           <FilterSheet
             products={products}
-            filteredCount={searchQuery ? finalProducts.length : (totalFilteredCount ?? 0)}
+            filteredCount={
+              searchQuery ? finalProducts.length : (totalFilteredCount ?? 0)
+            }
           />
         }
       />
@@ -258,15 +286,18 @@ export function Catalog({ initialProducts }: CatalogProps) {
                 <Sparkles className="h-5 w-5 text-purple-500 animate-pulse" />
               </div>
               <div>
-                <h3 className="mb-1 font-semibold text-purple-900">AI Рекомендация</h3>
+                <h3 className="mb-1 font-semibold text-purple-900">
+                  AI Рекомендация
+                </h3>
                 <p className="text-sm leading-relaxed text-purple-800/80">
-                  {recommendationText?.split(/(\*\*.*?\*\*)/).map((part, index) =>
+                  {recommendationParts.map(({ key, part }) =>
                     part.startsWith("**") && part.endsWith("**") ? (
-                      // biome-ignore lint/suspicious/noArrayIndexKey: Static split parts, index is stable
-                      <strong key={index} className="font-bold text-purple-900">{part.slice(2, -2)}</strong>
+                      <strong key={key} className="font-bold text-purple-900">
+                        {part.slice(2, -2)}
+                      </strong>
                     ) : (
                       part
-                    )
+                    ),
                   )}
                 </p>
               </div>
@@ -278,7 +309,9 @@ export function Catalog({ initialProducts }: CatalogProps) {
       {!loading && finalProducts.length === 0 ? (
         <div className="flex min-h-[400px] flex-col items-center justify-center text-center">
           <p className="text-lg font-medium text-gray-900">Ничего не найдено</p>
-          <p className="mt-2 text-gray-500">Попробуйте изменить параметры поиска или фильтры</p>
+          <p className="mt-2 text-gray-500">
+            Попробуйте изменить параметры поиска или фильтры
+          </p>
           <Button
             variant="link"
             className="mt-4 text-blue-600"

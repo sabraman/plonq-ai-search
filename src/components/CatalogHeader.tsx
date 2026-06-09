@@ -24,12 +24,12 @@ export function CatalogHeader({
   filterComponent,
 }: CatalogHeaderProps) {
   return (
-    <div className="mb-8 space-y-6">
+    <div className="mb-8 w-full space-y-6">
       <h1 className="text-3xl font-bold text-gray-900">Подбор вкусов Plonq</h1>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+      <div className="flex w-full flex-col gap-4">
         {/* Search Input */}
-        <div className="relative flex-1">
+        <div className="relative w-full">
           <AiSearchInput
             value={searchQuery}
             onChange={onSearchChange}
@@ -38,7 +38,7 @@ export function CatalogHeader({
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex w-full items-center justify-between gap-3">
           {filterComponent || (
             <Button
               variant="outline"

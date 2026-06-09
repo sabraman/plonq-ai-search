@@ -5,6 +5,8 @@ import { internal } from "./_generated/api";
 import OpenAI from "openai";
 import { Id } from "./_generated/dataModel";
 
+const EMBEDDING_MODEL = "openai/text-embedding-3-small";
+
 interface Product {
     _id: Id<"products">;
     _creationTime: number;
@@ -28,6 +30,143 @@ interface Product {
     sourness?: boolean;
 }
 
+interface ProductEmbedding {
+    _id: Id<"productEmbeddings">;
+    productId: Id<"products">;
+    embedding: number[];
+    strength?: string;
+    deviceType?: string;
+}
+
+interface VectorSearchResult {
+    _id: Id<"productEmbeddings">;
+    _score: number;
+}
+
+function rankProductsByPreferences(products: Product[], preferences: string) {
+    const queryLower = preferences.toLowerCase();
+
+    const isNotSweet = queryLower.includes("не сладк") || queryLower.includes("not sweet") || queryLower.includes("no sweet");
+    const isNotCold = queryLower.includes("не холод") || queryLower.includes("not cold") || queryLower.includes("no ice");
+    const isNotSour = queryLower.includes("не кисл") || queryLower.includes("not sour") || queryLower.includes("no sour");
+
+    const isStrong = queryLower.includes("крепк") || queryLower.includes("strong");
+    const isCold = !isNotCold && (queryLower.includes("холод") || queryLower.includes("лед") || queryLower.includes("ice") || queryLower.includes("свеж") || queryLower.includes("fresh"));
+    const isSweet = !isNotSweet && (queryLower.includes("сладк") || queryLower.includes("sweet"));
+    const isSour = !isNotSour && (queryLower.includes("кисл") || queryLower.includes("sour"));
+
+    if (!(isStrong || isCold || isSweet || isSour || isNotSweet || isNotCold || isNotSour)) {
+        return products;
+    }
+
+    return [...products].sort((a, b) => {
+        let scoreA = 0;
+        let scoreB = 0;
+
+        if (isStrong) {
+            if (a.strength === "High") scoreA += 2;
+            if (b.strength === "High") scoreB += 2;
+        }
+
+        if (isCold) {
+            if ((a.coldness ?? 0) >= 3) scoreA += 3;
+            else if ((a.coldness ?? 0) >= 2) scoreA += 1;
+
+            if ((b.coldness ?? 0) >= 3) scoreB += 3;
+            else if ((b.coldness ?? 0) >= 2) scoreB += 1;
+        } else if (isNotCold) {
+            if ((a.coldness ?? 0) <= 1) scoreA += 2;
+            if ((b.coldness ?? 0) <= 1) scoreB += 2;
+        }
+
+        if (isSweet) {
+            if ((a.sweetness ?? 0) >= 3) scoreA += 3;
+            else if ((a.sweetness ?? 0) >= 2) scoreA += 1;
+
+            if ((b.sweetness ?? 0) >= 3) scoreB += 3;
+            else if ((b.sweetness ?? 0) >= 2) scoreB += 1;
+        } else if (isNotSweet) {
+            if ((a.sweetness ?? 0) <= 1) scoreA += 2;
+            if ((b.sweetness ?? 0) <= 1) scoreB += 2;
+        }
+
+        if (isSour) {
+            if (a.sourness) scoreA += 2;
+            if (b.sourness) scoreB += 2;
+        } else if (isNotSour) {
+            if (!a.sourness) scoreA += 2;
+            if (!b.sourness) scoreB += 2;
+        }
+
+        return scoreB - scoreA;
+    });
+}
+
+function hasAttributePreference(preferences: string) {
+    const queryLower = preferences.toLowerCase();
+    return (
+        queryLower.includes("крепк") ||
+        queryLower.includes("strong") ||
+        queryLower.includes("холод") ||
+        queryLower.includes("лед") ||
+        queryLower.includes("ice") ||
+        queryLower.includes("свеж") ||
+        queryLower.includes("fresh") ||
+        queryLower.includes("сладк") ||
+        queryLower.includes("sweet") ||
+        queryLower.includes("кисл") ||
+        queryLower.includes("sour")
+    );
+}
+
+function getAverageRating(product: Product) {
+    if (!product.reviews?.length) return 0;
+    return (
+        product.reviews.reduce((sum, review) => sum + review.rating, 0) /
+        product.reviews.length
+    );
+}
+
+function getWeightedRating(product: Product, globalAverage: number) {
+    const reviewCount = product.reviews?.length ?? 0;
+    if (reviewCount === 0) return 0;
+
+    const minimumReviewWeight = 5;
+    const average = getAverageRating(product);
+
+    return (
+        (reviewCount / (reviewCount + minimumReviewWeight)) * average +
+        (minimumReviewWeight / (reviewCount + minimumReviewWeight)) *
+        globalAverage
+    );
+}
+
+function getGlobalAverageRating(products: Product[]) {
+    const ratings = products.flatMap((product) =>
+        product.reviews?.map((review) => review.rating) ?? []
+    );
+    if (ratings.length === 0) return 0;
+    return ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
+}
+
+function sortProductsByRating(products: Product[], direction: "asc" | "desc") {
+    const globalAverage = getGlobalAverageRating(products);
+    const directionMultiplier = direction === "desc" ? -1 : 1;
+
+    products.sort((a, b) => {
+        const weightedDiff =
+            getWeightedRating(a, globalAverage) -
+            getWeightedRating(b, globalAverage);
+
+        if (weightedDiff !== 0) return weightedDiff * directionMultiplier;
+
+        const reviewCountDiff = (a.reviews?.length ?? 0) - (b.reviews?.length ?? 0);
+        if (reviewCountDiff !== 0) return reviewCountDiff * directionMultiplier;
+
+        return (getAverageRating(a) - getAverageRating(b)) * directionMultiplier;
+    });
+}
+
 export const list = query({
     args: {},
     handler: async (ctx) => {
@@ -37,7 +176,7 @@ export const list = query({
 
 export const getProduct = internalQuery({
     args: { id: v.id("products") },
-    handler: async (ctx, args) => {
+    handler: async (ctx, args): Promise<Product | null> => {
         return await ctx.db.get(args.id);
     },
 });
@@ -49,6 +188,18 @@ export const getProductEmbedding = internalQuery({
             .query("productEmbeddings")
             .withIndex("by_productId", (q) => q.eq("productId", args.productId))
             .first();
+    },
+});
+
+export const getProductEmbeddingsByIds = internalQuery({
+    args: { ids: v.array(v.id("productEmbeddings")) },
+    handler: async (ctx, args): Promise<ProductEmbedding[]> => {
+        const embeddings: ProductEmbedding[] = [];
+        for (const id of args.ids) {
+            const embedding = (await ctx.db.get(id)) as ProductEmbedding | null;
+            if (embedding) embeddings.push(embedding);
+        }
+        return embeddings;
     },
 });
 
@@ -64,48 +215,56 @@ export const searchProducts = internalQuery({
     },
 });
 
+export const getSearchFallbackProducts = internalQuery({
+    args: {},
+    handler: async (ctx): Promise<Product[]> => {
+        return (await ctx.db.query("products").collect()) as Product[];
+    },
+});
+
 export const search = action({
     args: {
         preferences: v.string(),
-        initData: v.string(),
         filters: v.optional(v.object({
             strength: v.optional(v.array(v.string())),
             deviceType: v.optional(v.array(v.string())),
             categories: v.optional(v.array(v.string())),
         })),
     },
-    handler: async (ctx, args) => {
+    handler: async (ctx, args): Promise<Product[]> => {
         console.time("Total Execution");
 
-        // 0. Rate Limiting
-        const { parse, isValid } = await import("@telegram-apps/init-data-node/web");
-        const token = process.env.TG_API_TOKEN;
-        if (!token) throw new Error("TG_API_TOKEN not configured");
+        const result = await ctx.runMutation(internal.rateLimit.check, {
+            key: "ai-search",
+            limit: 30,
+            windowMs: 60 * 1000,
+        });
 
-        if (!isValid(args.initData, token)) {
-            throw new Error("Invalid initData");
+        if (!result.success) {
+            throw new ConvexError({
+                code: "RATE_LIMIT_EXCEEDED",
+                message: "You are sending too many requests. Please try again later.",
+                retryAfter: result.retryAfter
+            });
         }
 
-        const user = parse(args.initData).user;
-        if (!user) throw new Error("User not found in initData");
+        if (hasAttributePreference(args.preferences)) {
+            const products = (await ctx.runQuery(
+                internal.products.getSearchFallbackProducts,
+            )) as Product[];
+            const rankedProducts = rankProductsByPreferences(
+                products,
+                args.preferences,
+            ).slice(0, 20);
 
-        const adminId = process.env.TG_ADMIN_ID;
-        const isAdmin = adminId && user.id.toString() === adminId;
-
-        if (!isAdmin) {
-            const result = await ctx.runMutation(internal.rateLimit.check, {
-                key: user.id.toString(),
-                limit: 5, // 5 requests
-                windowMs: 60 * 1000, // per minute
+            await ctx.runMutation(internal.products.logSearch, {
+                query: args.preferences,
+                resultsCount: rankedProducts.length,
+                type: "attribute",
             });
 
-            if (!result.success) {
-                throw new ConvexError({
-                    code: "RATE_LIMIT_EXCEEDED",
-                    message: "You are sending too many requests. Please try again later.",
-                    retryAfter: result.retryAfter
-                });
-            }
+            console.timeEnd("Total Execution");
+            return rankedProducts;
         }
 
         // 1. Generate embedding for preferences
@@ -115,13 +274,34 @@ export const search = action({
             baseURL: process.env.OPENAI_BASE_URL,
         });
         const embeddingResponse = await openai.embeddings.create({
-            model: "google/gemini-embedding-001",
+            model: EMBEDDING_MODEL,
             input: args.preferences,
         });
         console.timeEnd("Embedding Generation");
-        const embedding = embeddingResponse.data[0]?.embedding;
+        const embedding = embeddingResponse.data?.[0]?.embedding;
         if (!embedding) {
-            throw new Error("Failed to generate embedding");
+            console.error("Embedding response did not include data[0].embedding");
+            const keywordProducts = (await ctx.runQuery(internal.products.searchProducts, {
+                query: args.preferences,
+            })) as Product[];
+            const fallbackProducts =
+                keywordProducts.length > 0
+                    ? keywordProducts
+                    : ((await ctx.runQuery(
+                        internal.products.getSearchFallbackProducts,
+                    )) as Product[]);
+            const rankedProducts = rankProductsByPreferences(
+                fallbackProducts,
+                args.preferences,
+            ).slice(0, 20);
+
+            await ctx.runMutation(internal.products.logSearch, {
+                query: args.preferences,
+                resultsCount: rankedProducts.length,
+                type: "keyword_fallback",
+            });
+
+            return rankedProducts;
         }
 
         // 2. Hybrid Search (Vector + Keyword)
@@ -151,6 +331,17 @@ export const search = action({
         console.log(`Vector results: ${vectorResults.length}`);
         console.log(`Keyword results: ${keywordResults.length}`);
 
+        const vectorEmbeddingIds = (vectorResults as VectorSearchResult[])
+            .map((result) => result._id)
+            .filter(Boolean);
+
+        const vectorEmbeddings: ProductEmbedding[] =
+            vectorEmbeddingIds.length > 0
+                ? await ctx.runQuery(internal.products.getProductEmbeddingsByIds, {
+                    ids: vectorEmbeddingIds,
+                })
+                : [];
+
         // Fetch all unique products
         const uniqueIds = new Set<string>();
         const productsToFetch: Id<"products">[] = [];
@@ -165,19 +356,11 @@ export const search = action({
             }
         };
 
-        // Map embedding results to product IDs
-        // Map embedding results to product IDs
-        const vectorIds = vectorResults
-            .map((r: any) => r.productId)
-            .filter((id: any) => id !== undefined && id !== null);
+        const vectorIds = vectorEmbeddings.map((embedding) => embedding.productId);
 
         const keywordIds = keywordResults
             .map((r: any) => r._id)
             .filter((id: any) => id !== undefined && id !== null);
-
-        if (vectorResults.length > 0 && vectorIds.length < vectorResults.length) {
-            console.error("Found vector results with missing productId", vectorResults);
-        }
 
         addIds(vectorIds);
         addIds(keywordIds);
@@ -215,76 +398,13 @@ export const search = action({
             });
         }
 
-        // 2.2 Heuristic Re-ranking
-        // Boost products that match attribute keywords in the query
-        const queryLower = args.preferences.toLowerCase();
-
-        // Check for negation first
-        const isNotSweet = queryLower.includes("не сладк") || queryLower.includes("not sweet") || queryLower.includes("no sweet");
-        const isNotCold = queryLower.includes("не холод") || queryLower.includes("not cold") || queryLower.includes("no ice");
-        const isNotSour = queryLower.includes("не кисл") || queryLower.includes("not sour") || queryLower.includes("no sour");
-
-        // Positive checks (only if not negated)
-        const isStrong = queryLower.includes("крепк") || queryLower.includes("strong");
-        // "Fresh" usually implies cold/ice
-        const isCold = !isNotCold && (queryLower.includes("холод") || queryLower.includes("лед") || queryLower.includes("ice") || queryLower.includes("свеж") || queryLower.includes("fresh"));
-        const isSweet = !isNotSweet && (queryLower.includes("сладк") || queryLower.includes("sweet"));
-        const isSour = !isNotSour && (queryLower.includes("кисл") || queryLower.includes("sour"));
-
-        if (isStrong || isCold || isSweet || isSour || isNotSweet || isNotCold || isNotSour) {
-            products.sort((a, b) => {
-                let scoreA = 0;
-                let scoreB = 0;
-
-                if (isStrong) {
-                    if (a.strength === "High") scoreA += 2;
-                    if (b.strength === "High") scoreB += 2;
-                }
-
-                // Coldness logic
-                if (isCold) {
-                    if ((a.coldness ?? 0) >= 3) scoreA += 3;
-                    else if ((a.coldness ?? 0) >= 2) scoreA += 1;
-
-                    if ((b.coldness ?? 0) >= 3) scoreB += 3;
-                    else if ((b.coldness ?? 0) >= 2) scoreB += 1;
-                } else if (isNotCold) {
-                    if ((a.coldness ?? 0) <= 1) scoreA += 2;
-                    if ((b.coldness ?? 0) <= 1) scoreB += 2;
-                }
-
-                // Sweetness logic
-                if (isSweet) {
-                    if ((a.sweetness ?? 0) >= 3) scoreA += 3;
-                    else if ((a.sweetness ?? 0) >= 2) scoreA += 1;
-
-                    if ((b.sweetness ?? 0) >= 3) scoreB += 3;
-                    else if ((b.sweetness ?? 0) >= 2) scoreB += 1;
-                } else if (isNotSweet) {
-                    if ((a.sweetness ?? 0) <= 1) scoreA += 2; // Boost low sweetness
-                    if ((b.sweetness ?? 0) <= 1) scoreB += 2;
-                }
-
-                // Sourness logic
-                if (isSour) {
-                    if (a.sourness) scoreA += 2;
-                    if (b.sourness) scoreB += 2;
-                } else if (isNotSour) {
-                    if (!a.sourness) scoreA += 2;
-                    if (!b.sourness) scoreB += 2;
-                }
-
-                // Sort by score descending
-                return scoreB - scoreA;
-            });
-        }
+        products = rankProductsByPreferences(products, args.preferences);
 
         const sanitizedProducts = products; // No need to remove embedding as it's not there
 
         // Log the search asynchronously
         await ctx.runMutation(internal.products.logSearch, {
             query: args.preferences,
-            userId: user.id.toString(),
             resultsCount: sanitizedProducts.length,
             type: "hybrid",
         });
@@ -332,11 +452,21 @@ export const similar = action({
             limit: 4,
         });
 
+        const embeddingIds = (results as VectorSearchResult[])
+            .map((result) => result._id)
+            .filter(Boolean);
+        const embeddings: ProductEmbedding[] =
+            embeddingIds.length > 0
+                ? await ctx.runQuery(internal.products.getProductEmbeddingsByIds, {
+                    ids: embeddingIds,
+                })
+                : [];
+
         // 3. Filter out the source product and fetch details
-        const similarIds: Id<"products">[] = results
-            .filter((r: any) => r.productId !== args.productId)
+        const similarIds: Id<"products">[] = embeddings
+            .filter((embedding) => embedding.productId !== args.productId)
             .slice(0, 3) // Keep top 3
-            .map((r: any) => r.productId);
+            .map((embedding) => embedding.productId);
 
         if (similarIds.length === 0) return [];
 
@@ -548,24 +678,10 @@ export const getPaginatedProducts = query({
 
         // 3. Sort
         console.time("sorting");
-        if (args.filters?.sortBy) {
-            // Simple sorting for now. 
-            // Complex Bayesian rating sort is heavy to do here if we don't have reviews joined.
-            // For now, let's just support basic sorts or rely on client-side sort for small filtered lists?
-            // Actually, if we paginate, we MUST sort on backend.
-            // Let's implement basic sorting.
-            // For "rating", we need reviews. But reviews are embedded now? 
-            // Yes, p.reviews exists.
-
-            if (args.filters.sortBy === "rating-desc") {
-                filtered.sort((a, b) => {
-                    const getRating = (p: any) => {
-                        if (!p.reviews?.length) return 0;
-                        return p.reviews.reduce((acc: number, r: any) => acc + r.rating, 0) / p.reviews.length;
-                    };
-                    return getRating(b) - getRating(a);
-                });
-            }
+        if (args.filters?.sortBy === "rating-desc") {
+            sortProductsByRating(filtered as Product[], "desc");
+        } else if (args.filters?.sortBy === "rating-asc") {
+            sortProductsByRating(filtered as Product[], "asc");
         }
         console.timeEnd("sorting");
 

@@ -3,6 +3,12 @@ import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import OpenAI from "openai";
 
+type OpenRouterProviderRouting = {
+    provider: {
+        only: string[];
+    };
+};
+
 const http = httpRouter();
 
 http.route({
@@ -24,6 +30,17 @@ http.route({
     method: "POST",
     handler: httpAction(async (ctx, request) => {
         const { preferences, products } = await request.json();
+        if (!Array.isArray(products) || products.length === 0) {
+            return new Response("", {
+                headers: {
+                    "Content-Type": "text/plain",
+                    "Cache-Control": "no-cache",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "POST, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type",
+                },
+            });
+        }
 
         const prompt = `
       User preferences: "${preferences}"
@@ -38,6 +55,7 @@ http.route({
             }
       
       Recommend the best product for this user.
+      Recommend ONLY from the listed products. If none match well, say that none of the listed products are a confident match.
       1. Prioritize exact matches for flavor or name if the user asked for it.
       2. Keep it brief (max 2-3 sentences).
       3. Be natural and polite. Avoid slang.
@@ -52,13 +70,16 @@ http.route({
         });
 
         const stream = await openai.chat.completions.create({
-            model: "openai/gpt-oss-120b",
+            model: "openai/gpt-oss-120b:nitro",
             messages: [
                 { role: "system", content: "You are a helpful assistant in a vape shop." },
                 { role: "user", content: prompt },
             ],
+            provider: {
+                only: ["Cerebras"],
+            },
             stream: true,
-        });
+        } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming & OpenRouterProviderRouting);
 
         return new Response(
             new ReadableStream({

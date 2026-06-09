@@ -34,13 +34,9 @@ export function ProductList({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3">
       {products.map((product, index) => (
-        <BlurFade
-          key={product._id}
-          delay={0.05 + index * 0.05}
-          inView
-        >
+        <BlurFade key={product._id} delay={0.05 + index * 0.05} inView>
           <ProductCard
             product={product}
             onClick={() => onProductClick?.(product)}

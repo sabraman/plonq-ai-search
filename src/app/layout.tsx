@@ -5,7 +5,6 @@ import { Montserrat } from "next/font/google";
 import { ClientRoot } from "~/components/common/client-root";
 import { Metrika } from "~/components/common/metrika";
 import { BottomNavBar } from "~/components/ui/bottom-nav-bar";
-import { env } from "~/env";
 
 const montserrat = Montserrat({
   subsets: ["latin", "cyrillic"],
@@ -17,8 +16,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "TG Mini App",
-  description: "",
+  title: "Plonq AI Search",
+  description: "AI-powered product search for the Plonq catalog.",
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
 
@@ -31,10 +30,10 @@ export default function RootLayout({
       className={`${montserrat.variable}`}
       suppressHydrationWarning
     >
-      <body>
-        <ClientRoot debug={env.NODE_ENV === "development"}>
-          {children}
-        </ClientRoot>
+      <body className="bg-gray-50">
+        <div className="mx-auto min-h-screen w-full max-w-lg bg-gray-50">
+          <ClientRoot>{children}</ClientRoot>
+        </div>
         <BottomNavBar stickyBottom />
         <Metrika />
       </body>

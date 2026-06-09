@@ -15,8 +15,13 @@ async function seed() {
 
     console.log(`Read ${products.length} products from ${productsPath}`);
 
-    // Clear existing products
-    console.log("Clearing existing products...");
+    console.log("Clearing existing product embeddings...");
+    while (true) {
+        const deleted = await client.mutation(api.ingest.clearProductEmbeddings, { limit: 100 });
+        if (deleted === 0) break;
+        console.log(`Deleted ${deleted} embeddings...`);
+    }
+
     // Clear existing products
     console.log("Clearing existing products...");
     while (true) {

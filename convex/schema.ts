@@ -43,7 +43,7 @@ export default defineSchema({
     deviceType: v.optional(v.string()),
   }).vectorIndex("by_embedding", {
     vectorField: "embedding",
-    dimensions: 3072,
+    dimensions: 1536,
     filterFields: ["strength", "deviceType"],
   }).index("by_productId", ["productId"]),
 

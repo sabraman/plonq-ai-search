@@ -16,14 +16,8 @@ async function testSearch() {
     for (const q of queries) {
         console.log(`\n--- Testing: "${q.text}" (${q.desc}) ---`);
         try {
-            // Mock initData for testing
-            const { sign } = await import("@telegram-apps/init-data-node");
-            const token = process.env.TG_API_TOKEN!;
-            const initData = sign({ user: { id: 12345, first_name: "Test" } }, token, new Date());
-
             const products = await client.action(api.products.search, {
                 preferences: q.text,
-                initData: initData
             });
             console.log(`Found ${products.length} products`);
             console.log("Top 3 Products:");

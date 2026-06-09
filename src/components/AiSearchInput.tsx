@@ -90,7 +90,7 @@ export function AiSearchInput({
       {/* Suggestions */}
       {suggestions.length > 0 && (
         <div className="relative">
-          <div className="flex overflow-x-auto pb-2 -mx-4 px-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="flex overflow-x-auto py-2 pr-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <div className="flex gap-2">
               {suggestions.map((suggestion) => (
                 <button
@@ -105,7 +105,7 @@ export function AiSearchInput({
             </div>
           </div>
           {/* Fade Gradient */}
-          <div className="pointer-events-none absolute -right-4 top-0 bottom-2 w-16 bg-gradient-to-l from-white to-transparent" />
+          <div className="pointer-events-none absolute right-0 top-2 bottom-2 w-10 bg-gradient-to-l from-gray-50 to-transparent" />
         </div>
       )}
     </div>

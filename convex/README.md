@@ -63,13 +63,13 @@ const newPost = await convex.mutation(api.posts.createPost, {
 
 ## Development
 
-- Run `pnpm convex:dev` to start the Convex development server
-- Run `pnpm dev` to start the Next.js development server
+- Run `bun run convex:dev` to start the Convex development server
+- Run `bun run dev` to start the Next.js development server
 - Visit the demo page at `/demo` to see the Convex integration in action
 
 ## Deployment
 
-- Run `pnpm convex:deploy` to deploy to production
+- Run `bun run convex:deploy` to deploy to production
 - The production URL will be automatically set in your environment variables
 
 ## Dashboard

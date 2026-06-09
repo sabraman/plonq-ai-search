@@ -69,6 +69,8 @@ async function scrape() {
     // Helper to get links from a page
     const getLinks = async (url: string) => {
         const page = await browser.newPage();
+        page.setDefaultNavigationTimeout(60000);
+        page.setDefaultTimeout(20000);
         // Optimize: Block resources
         await page.setRequestInterception(true);
         page.on('request', (req) => {
@@ -80,12 +82,11 @@ async function scrape() {
         });
 
         try {
-            // Wait for network idle to ensure content is loaded
-            await page.goto(url, { waitUntil: 'networkidle2' });
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
             // Wait for at least one catalog item to appear
             try {
-                await page.waitForSelector('a[href^="/catalog/"]', { timeout: 5000 });
+                await page.waitForSelector('a[href^="/catalog/"]', { timeout: 15000 });
             } catch (e) {
                 console.log(`No products found on ${url} (or timeout)`);
                 return [];
@@ -111,7 +112,7 @@ async function scrape() {
     console.log('Step 1: Collecting attributes from filtered pages...');
 
     // Process filters in parallel with limited concurrency
-    const FILTER_CONCURRENCY = 3;
+    const FILTER_CONCURRENCY = 1;
     const filterChunks = chunk(ATTRIBUTE_URLS, FILTER_CONCURRENCY);
 
     for (const batch of filterChunks) {
@@ -156,6 +157,8 @@ async function scrape() {
 
         await Promise.all(batch.map(async (url) => {
             const page = await browser.newPage();
+            page.setDefaultNavigationTimeout(60000);
+            page.setDefaultTimeout(20000);
             // Block fonts/css/media but allow images for src extraction? 
             // Actually, we can block images too, the src attribute is usually present in the DOM even if image request is blocked.
             await page.setRequestInterception(true);
@@ -169,7 +172,7 @@ async function scrape() {
 
             try {
                 // Wait for network idle or specific selector
-                await page.goto(url, { waitUntil: 'domcontentloaded' });
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
                 // Wait for main content
                 await page.waitForSelector('h1', { timeout: 10000 });
@@ -281,6 +284,11 @@ async function scrape() {
     }
 
     console.log(`Successfully scraped ${allProducts.length} products.`);
+    if (allProducts.length === 0) {
+        await browser.close();
+        throw new Error('Scrape returned zero products; keeping existing products.json unchanged.');
+    }
+
     await fs.writeFile(OUTPUT_FILE, JSON.stringify(allProducts, null, 2));
     console.log(`Saved to ${OUTPUT_FILE}`);
 
@@ -312,4 +320,7 @@ function chunk<T>(arr: T[], size: number): T[][] {
     );
 }
 
-scrape().catch(console.error);
+scrape().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+});

@@ -7,8 +7,7 @@ export const env = createEnv({
    * isn't built with invalid env vars.
    */
   server: {
-    TG_API_TOKEN: z.string(),
-    TG_ADMIN_ID: z.string(),
+    ADMIN_PASSWORD: z.string().optional(),
     CONVEX_DEPLOYMENT: z.string().optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
@@ -22,8 +21,7 @@ export const env = createEnv({
    */
   client: {
     // NEXT_PUBLIC_CLIENTVAR: z.string(),
-    NEXT_PUBLIC_SITE_URL: z.string().url(),
-    NEXT_PUBLIC_TG_APP_URL: z.string().url(),
+    NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
     NEXT_PUBLIC_CONVEX_URL: z.string().url(),
     NEXT_PUBLIC_YANDEX_METRIKA_ID: z.string().optional(),
   },
@@ -34,11 +32,9 @@ export const env = createEnv({
    */
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
-    TG_API_TOKEN: process.env.TG_API_TOKEN,
-    TG_ADMIN_ID: process.env.TG_ADMIN_ID,
+    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
     CONVEX_DEPLOYMENT: process.env.CONVEX_DEPLOYMENT,
     NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
-    NEXT_PUBLIC_TG_APP_URL: process.env.NEXT_PUBLIC_TG_APP_URL,
     NEXT_PUBLIC_CONVEX_URL: process.env.NEXT_PUBLIC_CONVEX_URL,
     NEXT_PUBLIC_YANDEX_METRIKA_ID: process.env.NEXT_PUBLIC_YANDEX_METRIKA_ID,
   },

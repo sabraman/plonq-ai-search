@@ -32,7 +32,7 @@ export function ProductDetails({
   const getSimilar = useAction(api.products.similar);
 
   useEffect(() => {
-    if (isOpen && product && product._id) {
+    if (isOpen && product?._id) {
       setIsLoading(true);
       getSimilar({ productId: product._id as Id<"products"> })
         .then((res) => setSimilarProducts(res as Product[]))
@@ -75,7 +75,10 @@ export function ProductDetails({
 
   return (
     <Drawer open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DrawerContent className="h-[90vh] rounded-t-[32px]">
+      <DrawerContent
+        aria-describedby={undefined}
+        className="h-[90vh] rounded-t-[32px]"
+      >
         <div className="mx-auto w-full max-w-md flex flex-col h-full">
           <DrawerHeader className="flex items-center justify-between border-b px-6 py-4">
             <DrawerTitle className="text-xl font-bold">
@@ -180,9 +183,9 @@ export function ProductDetails({
                   Отзывы ({product.reviews.length})
                 </h3>
                 <div className="space-y-4">
-                  {product.reviews.map((review, i) => (
+                  {product.reviews.map((review) => (
                     <div
-                      key={`${review.author}-${i}`}
+                      key={`${review.author}-${review.date}-${review.text}`}
                       className="rounded-2xl bg-gray-50 p-4"
                     >
                       <div className="mb-2 flex items-center justify-between">
@@ -214,8 +217,8 @@ export function ProductDetails({
                 Похожие вкусы
               </h3>
               <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                {similarProducts.map((p, i) => (
-                  <ProductCard key={`${p.name}-${i}`} product={p} />
+                {similarProducts.map((p) => (
+                  <ProductCard key={p._id} product={p} />
                 ))}
                 {isLoading && similarProducts.length === 0 && (
                   <div className="col-span-2 text-center text-gray-400 text-sm py-4">
