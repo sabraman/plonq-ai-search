@@ -93,7 +93,7 @@ export function Catalog({ initialProducts }: CatalogProps) {
             }
           }
         },
-        { rootMargin: "1000px" },
+        { rootMargin: "1800px 0px" },
       );
 
       if (node) observerRef.current.observe(node);

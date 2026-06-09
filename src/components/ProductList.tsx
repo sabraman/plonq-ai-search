@@ -1,6 +1,5 @@
 import type { Product } from "~/lib/filter-utils";
 import { ProductCard } from "./ProductCard";
-
 import { BlurFade } from "./ui/blur-fade";
 
 interface ProductListProps {
@@ -8,6 +7,8 @@ interface ProductListProps {
   onProductClick?: (product: Product) => void;
   loading?: boolean;
 }
+
+const REVEAL_BATCH_SIZE = 6;
 
 export function ProductList({
   products,
@@ -36,7 +37,15 @@ export function ProductList({
   return (
     <div className="grid grid-cols-2 gap-3">
       {products.map((product, index) => (
-        <BlurFade key={product._id} delay={0.05 + index * 0.05} inView>
+        <BlurFade
+          key={product._id}
+          delay={(index % REVEAL_BATCH_SIZE) * 0.04}
+          duration={0.42}
+          offset={8}
+          blur="8px"
+          inView
+          inViewMargin="700px"
+        >
           <ProductCard
             product={product}
             onClick={() => onProductClick?.(product)}

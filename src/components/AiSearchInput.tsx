@@ -90,7 +90,7 @@ export function AiSearchInput({
       {/* Suggestions */}
       {suggestions.length > 0 && (
         <div className="relative">
-          <div className="flex overflow-x-auto py-2 pr-10 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="flex overflow-x-auto pl-1 py-2 pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <div className="flex gap-2">
               {suggestions.map((suggestion) => (
                 <button
