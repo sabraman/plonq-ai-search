@@ -30,9 +30,6 @@ export default defineSchema({
         })
       )
     ),
-    // Legacy production rows still have this field. New writes split embeddings
-    // into productEmbeddings, but schema deploys must validate old documents.
-    embedding: v.optional(v.array(v.float64())),
     searchText: v.optional(v.string()),
   }).searchIndex("search_body", {
     searchField: "searchText",

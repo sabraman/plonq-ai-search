@@ -1,4 +1,7 @@
-import { internalMutation } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
+import { v } from "convex/values";
+import { internal } from "./_generated/api";
+import { action, internalMutation } from "./_generated/server";
 
 export const splitEmbeddings = internalMutation({
     args: {},
@@ -50,5 +53,56 @@ export const splitEmbeddings = internalMutation({
             }
         }
         return `Migrated ${migratedCount} products.`;
+    },
+});
+
+export const stripLegacyProductEmbeddingsPage = internalMutation({
+    args: { paginationOpts: paginationOptsValidator },
+    handler: async (ctx, args) => {
+        const page = await ctx.db.query("products").paginate(args.paginationOpts);
+        let migratedCount = 0;
+
+        for (const product of page.page) {
+            const p = product as typeof product & { embedding?: number[] };
+            if (!p.embedding) continue;
+
+            const { embedding: _embedding, ...rest } = p;
+            await ctx.db.replace(p._id, rest);
+            migratedCount++;
+        }
+
+        return {
+            migratedCount,
+            continueCursor: page.continueCursor,
+            isDone: page.isDone,
+        };
+    },
+});
+
+export const stripLegacyProductEmbeddings = action({
+    args: { batchSize: v.optional(v.number()) },
+    handler: async (ctx, args) => {
+        const batchSize = args.batchSize ?? 5;
+        let cursor: string | null = null;
+        let migratedCount = 0;
+
+        while (true) {
+            const result: {
+                migratedCount: number;
+                continueCursor: string;
+                isDone: boolean;
+            } = await ctx.runMutation(internal.migrations.stripLegacyProductEmbeddingsPage, {
+                paginationOpts: {
+                    numItems: batchSize,
+                    cursor,
+                },
+            });
+
+            migratedCount += result.migratedCount;
+            if (result.isDone) break;
+            cursor = result.continueCursor;
+        }
+
+        return { migratedCount };
     },
 });
